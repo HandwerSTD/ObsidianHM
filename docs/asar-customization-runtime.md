@@ -182,6 +182,7 @@ app.on("activate", () => { be = !1; BrowserWindow.getAllWindows().length === 0 &
 | starter 窗口复用为仓库窗口 | 放弃，采用官方行为 |
 | 打开最近仓库时复用 starter 窗口 | 放弃，采用官方行为 |
 | `[HMOS-FRAME]` 窗口按钮处理 | 运行时注入 |
+| 隐藏自绘的三个窗口按钮 | 运行时注入（新增，详见 3.10） |
 | `package.json` 的 version | 保留补丁（必须） |
 | `package.json` 的 author / description | 放弃，采用官方值 |
 | `icon.png` 替换、`tray.png` 新增 | 保留（复制文件） |
@@ -335,6 +336,36 @@ function pt(){if(we){we.isMinimized()&&we.restore(),we.focus();return}
 1.12.7 上删除了 `vault-move` 通道，并把 12 个 `hcs-*` 通道插在它原来的位置。1.13.4 的产物中 `vault-move` 仍然存在，`hcs-*` 改为插在 `vault-open` 之前。
 
 `hcs-*` 移到外层后，asar 内不再做任何通道增删，这一项自动消失。
+
+### 3.10 自绘的三个窗口按钮
+
+**决策：运行时注入。**
+
+官方 `app.js` 里的标题栏类（构造函数中 `this.isMac="darwin"===window.process.platform`）在非 macOS 上创建三个按钮：
+
+```
+c.createDiv({cls:"titlebar-button mod-minimize", onclick: ... e.minimize() ...})
+c.createDiv({cls:"titlebar-button mod-maximize", onclick: ... e.maximize() ...})
+c.createDiv({cls:"titlebar-button mod-close",    onclick: ... e.close()    ...})
+```
+
+`c` 是 `s.createDiv("titlebar-button-container mod-right")`，即标题栏右端的容器。本机平台不是 `darwin`，这三个按钮会被创建；而系统在该窗口上已经画了同样位置的三个按钮（对应 `setWindowButtonVisibility(true)`），两者重合。
+
+处置：在 `inject/dom-ready.js` 里向文档头部插入一条样式，把 `.titlebar-button-container.mod-right .titlebar-button` 置为 `display:none !important`。
+
+只针对 `mod-right` 容器。左端的菜单按钮在 `.titlebar-button-container.mod-left` 里，不在影响范围内。
+
+官方 `app.css` 已经把这三个按钮藏起来了：
+
+```
+.is-hidden-frameless:not(.starter, .is-popout-modal).mod-windows .titlebar-button.mod-back,
+.is-hidden-frameless:not(.starter, .is-popout-modal).mod-linux .titlebar-button.mod-back,
+... .titlebar-text { display: none; }
+```
+
+设置子窗口带 `is-popout-modal` 类，被这条规则排除在外，因此它的按钮会显示出来。
+
+隐藏动作放在 `frame` 取值判定之后。`frame=native` 时官方不创建自绘标题栏（该处是 `"native"!==t&&(e.frameDom=new OI(...))`），无可隐藏。
 
 ## 4. app.js 的定制
 
@@ -694,6 +725,7 @@ asar 保持官方原版，补丁只剩一项必须做的：**外层 `package.jso
 | starter 窗口复用为仓库窗口 | 放弃，采用官方行为（3.8） |
 | 打开最近仓库时复用 starter 窗口 | 放弃，采用官方行为（3.8） |
 | `[HMOS-FRAME]` 窗口按钮处理 | 改为运行时注入（2 节决策表） |
+| 隐藏自绘的三个窗口按钮 | 运行时注入（3.10）。1.13.4 的官方脚本在非 macOS 上自绘这三个按钮，与系统按钮重合 |
 | `package.json` 三个字段 | 收窄为外层 `version` 一项（7.1） |
 | `icon.png.bak`、`harmonyos-sync-bridge.js` | 已消除。这两个文件在 1.12.7 的定制版 asar 里，改用官方原版后不存在 |
 

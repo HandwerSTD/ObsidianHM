@@ -58,6 +58,7 @@ HarmonyOS port: desktop auto-update is disabled
 注入脚本已施加 preload.js WebContents 1 类型 starter
 [INJECT] dom-ready 注入开始
 注入脚本已施加 dom-ready.js WebContents 1 类型 starter
+[INJECT] 自绘窗口按钮已隐藏
 [INJECT] 窗口按钮与右边距已调整，frame=hidden setWindowButtonVisibility=true --frame-right-space=126px
 [INJECT] 标题栏文字已改写 1 处
 [INJECT] 起始窗口样式已注入
@@ -89,7 +90,7 @@ disable-update 被调用，参数 （读取）
 | 字体补丁 | `字体兼容补丁已注入渲染进程 <编号>` 每个窗口多次 |
 | 注入脚本施加 | `注入脚本已施加 preload.js` 与 `dom-ready.js` |
 | i18next 包装 | `i18next.t 已包装` |
-| 窗口按钮与右边距 | `setWindowButtonVisibility=true --frame-right-space=126px` |
+| 窗口按钮与右边距 | `自绘窗口按钮已隐藏`（或 `（样式已随窗口中继）`），随后 `setWindowButtonVisibility=true --frame-right-space=126px` |
 | 设置页基类回溯 | `华为云同步页已注册，基类 <名>，取法 prototype` |
 | 两个设置页包装 | `外观页=true 关于页=true`，页签列表末尾是 `huawei-cloud-sync` |
 | 开关插入位置 | `所在分组=高级 位置=1` |
@@ -127,6 +128,8 @@ Uncaught
 | 设置界面能打开 | 1.13.4 起默认在独立窗口打开。打不开通常意味着 remote 未提前开启 |
 | 「华为云同步」设置页出现 | 验证设置页基类回溯与注册 |
 | 「外观」页有「退出软件」开关 | 应位于「高级」分组、自定义应用图标之后 |
+| 标题栏右端只有三个按钮 | 系统按钮与自绘按钮重合过。若出现两套，说明 `自绘窗口按钮已隐藏` 未生效 |
+| 设置子窗口只有一套按钮 | 该窗口带 `is-popout-modal`，官方把主窗口的样式继承过去（日志为 `自绘窗口按钮已隐藏（样式已随窗口中继）`） |
 | 「关于」页有「贡献作者」条目 | 应紧跟在版本项之后 |
 | 托盘图标出现且可点击 | 验证 `tray.png` 与托盘初始化 |
 | 关闭仓库窗口最小化到托盘 | 验证 `close` 事件拦截 |

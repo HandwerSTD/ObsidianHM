@@ -5,7 +5,7 @@
 //   2. 「外观」页插入「退出软件」开关
 //   3. 「关于」页追加「贡献作者」
 //   4. 起始窗口的标题栏文字
-//   5. 窗口按钮可见性与标题栏右边距（[HMOS-FRAME]）
+//   5. 窗口按钮可见性与标题栏右边距，以及隐藏官方自绘的三个窗口按钮（[HMOS-FRAME]）
 //
 // 关键约束：设置项的取值在 Setting 构造期间就被算出并缓存
 // （addSettingTab 内部立即调用 update()，update() 做
@@ -61,19 +61,49 @@
   //
   // 官方在 renderer 里按 ipcRenderer.sendSync("frame") 的返回值分支，
   // 取值为 "hidden" 时给 body 加 is-hidden-frameless 类。
-  // 仓库版本在此基础上多两件事：调用 setWindowButtonVisibility
-  // 与设置 --frame-right-space。两件都不依赖 asar 内部变量。
+  // 仓库版本在此基础上多做三件事：调用 setWindowButtonVisibility、
+  // 设置 --frame-right-space、隐藏官方自绘的三个窗口按钮。
+  // 三件都不依赖 asar 内部变量。
   // ---------------------------------------------------------------
-  function applyFrameAdjustments() {
+
+  // 官方自绘标题栏（app.js 里的 OI 类）在非 macOS 上创建
+  // 最小化、最大化、关闭三个按钮，放在 .titlebar-button-container.mod-right。
+  // 本机平台不是 darwin，因此这三个按钮会被创建；而系统在该窗口上
+  // 已经画了同样位置的三个按钮（对应下面调用的 setWindowButtonVisibility），
+  // 两者重合。这里隐藏自绘的那一份。
+  // 左端的菜单按钮（mod-logo）不在 mod-right 里，不受影响。
+  function hideSelfDrawnWindowButtons() {
     try {
-      var electron = electronApi();
-      if (!electron || !electron.remote) {
-        log('窗口按钮调整跳过：electron.remote 不可用');
+      // 设置弹窗由 window.open 造出，官方的样式中继会把主窗口 head 里的
+      // style 元素克隆过去，本样式（含同一个 id）随之继承。已存在时无需重复插入，
+      // 但两个分支都输出日志，以便这条判据在每个窗口上都成立。
+      if (document.getElementById('ohsidian-frame-buttons')) {
+        log('自绘窗口按钮已隐藏（样式已随窗口中继）');
         return;
       }
+      var style = document.createElement('style');
+      style.id = 'ohsidian-frame-buttons';
+      style.textContent =
+        '.titlebar-button-container.mod-right .titlebar-button { display: none !important; }';
+      (document.head || document.documentElement).appendChild(style);
+      log('自绘窗口按钮已隐藏');
+    } catch (e) {
+      log('隐藏自绘窗口按钮失败 ' + (e && e.message ? e.message : e));
+    }
+  }
+
+  function applyFrameAdjustments() {
+    try {
       var frameStyle = sendSync('frame') || 'hidden';
       if (frameStyle === 'native') {
         log('窗口按钮调整跳过：frame=native');
+        return;
+      }
+      // 无边框窗口上系统的三个按钮与官方自绘的三个重合，先隐藏自绘的那份。
+      hideSelfDrawnWindowButtons();
+      var electron = electronApi();
+      if (!electron || !electron.remote) {
+        log('窗口按钮调整跳过：electron.remote 不可用');
         return;
       }
       var win = electron.remote.getCurrentWindow();

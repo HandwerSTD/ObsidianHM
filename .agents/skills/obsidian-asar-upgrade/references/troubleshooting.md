@@ -103,6 +103,14 @@ asar 加载失败，或注入脚本抛错。两者的判据不同：
 
 处置：确认外层有 `app.on('before-quit', ...)` 置 `quitRequested = true`，以及 `force-quit` 通道在调 `app.quit()` 前也置了它。
 
+### 标题栏右端出现两套窗口按钮
+
+官方 `app.js` 的标题栏类在非 macOS 上自绘最小化、最大化、关闭三个按钮，放在 `.titlebar-button-container.mod-right`。系统在该窗口上也画了同样位置的三个按钮，两者重合。
+
+日志里应有 `自绘窗口按钮已隐藏`；设置子窗口上为 `自绘窗口按钮已隐藏（样式已随窗口中继）`（官方把主窗口 `head` 里的 `style` 元素克隆了过去）。两行都没有说明 `inject/dom-ready.js` 的 `hideSelfDrawnWindowButtons` 未执行。
+
+注意只针对 `mod-right` 容器：左端的菜单按钮在 `.mod-left` 里。官方的 `.mod-linux .titlebar-button` 规则把 `display` 设为 `flex`，所以隐藏用的样式需要 `!important`。
+
 ### 起始窗口打开仓库后不关闭
 
 `window.close` 被某个注入脚本覆盖了。覆盖会作用于每个渲染进程，连带破坏三处：起始窗口不关闭、「切换仓库」命令走不完、设置弹窗关不掉。

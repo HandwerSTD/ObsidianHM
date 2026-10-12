@@ -81,7 +81,7 @@ asar 换代后压缩变量会重排，但外层与注入脚本都不引用 asar 
 | `dom-ready.js` 的设置页注册 | `window.app.setting.settingTabs`、`addSettingTab`、设置页基类（从原型链回溯） |
 | `dom-ready.js` 的两页包装 | `getSettingDefinitions`、`update()`、设置项的 `render(setting)` 回调 |
 | `dom-ready.js` 的插入定位 | 「外观」页与「关于」页的条目名（中文界面下为「半透明效果」）、`type:"group"` 的分组结构 |
-| `dom-ready.js` 的窗口按钮 | `ipcRenderer.sendSync('frame')`、`remote.getCurrentWindow().setWindowButtonVisibility`、CSS 变量 `--frame-right-space` |
+| `dom-ready.js` 的窗口按钮 | `ipcRenderer.sendSync('frame')`、`remote.getCurrentWindow().setWindowButtonVisibility`、CSS 变量 `--frame-right-space`，以及隐藏官方自绘的 `.titlebar-button-container.mod-right .titlebar-button` |
 | `dom-ready.js` 的标题栏 | `.titlebar-text` 元素 |
 
 改动任何一项之前，先在官方 asar 里核对新版的写法。解包查看：
