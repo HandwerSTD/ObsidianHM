@@ -41,6 +41,7 @@ import { ContextAdapter } from './ContextAdapter';
 const TAG: string = 'statusBar';
 const TRAY_IMAGE_EDITABLE: boolean = false;
 const TRAY_IMAGE_PIXEL_FORMAT: number = 4;
+const BYTES_PER_PIXEL: number = 4;
 
 interface MenuItem {
   title?: string,
@@ -97,6 +98,12 @@ async SetImage(
 
   if (blackWidth !== undefined && blackHeight !== undefined && blackIconBuffer !== undefined) {
     blackTrayIcon = this.convertImagePixelMap(blackWidth, blackHeight, blackIconBuffer);
+  }
+
+  if (blackTrayIcon === undefined && whiteTrayIcon !== undefined) {
+    // 调用方只给了白色图标。状态栏在浅色背景下取 black 那一份，直接复用白图会看不见，
+    // 因此由外层把白色图标反色成黑色图标。
+    blackTrayIcon = this.invertIcon(whiteTrayIcon, whiteWidth, whiteHeight);
   }
 
   if (!this.isCreated) {
@@ -234,6 +241,44 @@ async SetImage(
 
   private transformJsonToMenus(jsonData: MenuRawData[]): statusBarManager.StatusBarMenuItem[] {
     return jsonData.map(item => this.transformMenuItem(item) as statusBarManager.StatusBarMenuItem);
+  }
+
+  // 逐像素反色。图标是单色的，反色只作用于颜色通道，alpha 保持原样，
+  // 这样图标的轮廓与抗锯齿边缘都不变，只有黑白互换。
+  // 新建 PixelMap 用的是与白色图标完全相同的初始化参数，两者的数据解释方式因而一致。
+  private invertIcon(source: image.PixelMap, width: number, height: number): image.PixelMap | undefined {
+    let byteLength: number = width * height * BYTES_PER_PIXEL;
+    let pixelBytes: number = source.getPixelBytesNumber();
+    if (pixelBytes !== byteLength) {
+      // 逐行反色要求缓冲区里没有行间填充字节。这里的 PixelMap 都是由定长缓冲区直接创建，
+      // 每行字节数就是 width * 4，遇到不一致的情况就不做反色，保留原本的白图。
+      LogUtil.warn(TAG, 'tray icon stride mismatch, skip invert: ' + pixelBytes + ' vs ' + byteLength);
+      return undefined;
+    }
+    let pixels: ArrayBuffer = new ArrayBuffer(byteLength);
+    let inverted: image.PixelMap | undefined;
+    try {
+      source.readPixelsToBufferSync(pixels);
+      let bytes: Uint8Array = new Uint8Array(pixels);
+      for (let offset: number = 0; offset + BYTES_PER_PIXEL <= byteLength; offset += BYTES_PER_PIXEL) {
+        bytes[offset] = 255 - bytes[offset];
+        bytes[offset + 1] = 255 - bytes[offset + 1];
+        bytes[offset + 2] = 255 - bytes[offset + 2];
+      }
+      inverted = image.createPixelMapSync(pixels, {
+        editable: TRAY_IMAGE_EDITABLE,
+        pixelFormat: TRAY_IMAGE_PIXEL_FORMAT,
+        size: {
+          height: height,
+          width: width
+        }
+      });
+    } catch (error) {
+      LogUtil.error(TAG, 'failed invert tray icon because: ' + JSON.stringify(error));
+      return undefined;
+    }
+    LogUtil.info(TAG, 'tray icon inverted: ' + width + 'x' + height);
+    return inverted;
   }
 
   private convertImagePixelMap(width: number, height: number, buff: ArrayBuffer): image.PixelMap | undefined {
