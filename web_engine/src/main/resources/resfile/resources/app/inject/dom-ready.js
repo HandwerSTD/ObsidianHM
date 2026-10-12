@@ -568,7 +568,24 @@
   }, 100);
 
   // ---------------------------------------------------------------
-  // 4. 起始窗口的样式。
+  // 4. 起始窗口与帮助窗口的样式。
+  //
+  // 两个页面都是 body.starter：起始窗口是 starter.html，帮助窗口是 help.html。
+  // 页面自身一律深色（两个 html 的 body 都写死 theme-dark），而窗口装饰被隐藏，
+  // 标题栏只能由官方自绘的那一条承担。
+  //
+  // 标题栏这条元素同时是拖动区域：官方 CSS 给 .titlebar 设了
+  // -webkit-app-region: drag，那是唯一让窗口跟着指针移动的地方。
+  // 早先这里把它整条 display:none 掉，拖动区域随之消失，两个窗口都拖不动。
+  // 因此改为保留标题栏、只把它的内容与背景隐去：
+  //   - 标题栏内的标题文字与左端菜单按钮不显示；
+  //   - 背景透明、去掉下边框，与页面底色连成一片；
+  //   - 官方自绘的三个窗口按钮由 hideSelfDrawnWindowButtons 统一隐藏，
+  //     这里不重复处理。
+  // 拖动区域的高度由官方 CSS 的 --titlebar-height（30px）决定，与系统绘制的
+  // 三个按钮所占的顶部区域一致。
+  //
+  // padding-top 保留：页面内容整体下移 30px，避免压到系统按钮与拖动区域下面。
   // ---------------------------------------------------------------
   function applyStarterStyles() {
     try {
@@ -579,7 +596,9 @@
       style = document.createElement('style');
       style.id = 'ohsidian-starter-style';
       style.textContent = [
-        '.starter .titlebar { display: none; }',
+        '.starter .titlebar { background-color: transparent; border: none; }',
+        '.starter .titlebar-inner { color: transparent; }',
+        '.starter .titlebar-button-container.mod-left .titlebar-button { display: none; }',
         '.starter { padding-top: 30px !important; }'
       ].join('\n');
       document.head.appendChild(style);

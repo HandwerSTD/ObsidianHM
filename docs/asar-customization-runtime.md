@@ -616,14 +616,20 @@ i18next.t = function (key, opts) {
 
 **决策：运行时注入。**
 
-外层已有 `webContents.executeJavaScript`，`webContents.insertCSS` 同样可用。改为注入两条规则：
+外层已有 `webContents.executeJavaScript`，`webContents.insertCSS` 同样可用。改为注入四条规则：
 
 ```css
-.starter .titlebar { display: none; }
+.starter .titlebar { background-color: transparent; border: none; }
+.starter .titlebar-inner { color: transparent; }
+.starter .titlebar-button-container.mod-left .titlebar-button { display: none; }
 .starter { padding-top: 30px !important; }
 ```
 
-仓库版本改的第三条（`.starter.is-hidden-frameless .titlebar` 的 `display: block` 改为 `none`）在 1.13.4 里不存在了：该选择器整条被去掉，1.13.4 里含 `.starter .titlebar` 的复合选择器只设置 `height` 与 `zoom`，不设 `display`。因此当前补丁改为直接隐藏 `.starter .titlebar`。注入不受这类改写影响。
+仓库版本改的第三条（`.starter.is-hidden-frameless .titlebar` 的 `display: block` 改为 `none`）在 1.13.4 里不存在了：该选择器整条被去掉，1.13.4 里含 `.starter .titlebar` 的复合选择器只设置 `height` 与 `zoom`，不设 `display`。
+
+**不得把 `.titlebar` 整条隐藏。** 这条元素同时是窗口的唯一拖动区域：官方 CSS 给 `.titlebar` 设了 `-webkit-app-region: drag`。把它 `display: none` 掉，起始窗口与帮助窗口就拖不动了。上面四条改为保留标题栏、只隐去它的内容与背景，拖动区域随标题栏一起保留。
+
+起始窗口与帮助窗口共用 `body.starter`：前者是 `starter.html`，后者是 `help.html`。两个页面写死深色，标题栏右上角的系统三键需要按深色页面配色，见 `WebAbility` 里的 `setDecorButtonStyle`。
 
 注入时机用 `did-start-navigation` 与 `dom-ready`，与 `installFontFaceGuard()` 相同，并在导航后重新注入。
 

@@ -409,6 +409,36 @@ e.parent === e && function (e) {
 
 平台类由 `Gp()` 决定（`win32` → `win`，`darwin` → `mac`，`linux` → `linux`，其余非空值 → `unknown`），加在 `body` 上成为 `mod-windows` / `mod-macos` / `mod-linux`。
 
+### 2.6 拖动区域
+
+窗口装饰被隐藏时（`hideTitleBar` 为真，`setWindowDecorVisible(false)`），整个窗口只有一处可以拖动：官方自绘标题栏那条 `.titlebar` 元素。官方 `app.css` 给它设了：
+
+```css
+.titlebar {
+  -webkit-app-region: drag;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  ...
+}
+```
+
+写作 `no-drag` 的元素把自身从拖动区域里排除，例如 `.titlebar-button`、`.workspace-tab-header`、`button`、各类输入框。因此窗口里可以点击的控件不会被拖动区域吞掉。
+
+`.titlebar` 被 `display: none` 时拖动区域一并消失，窗口拖不动。起始窗口与帮助窗口都需要保留这条元素。
+
+标题栏内三条子元素与窗口拖动的关系：
+
+| 选择器 | 作用 |
+|--------|------|
+| `.titlebar-inner` | 标题栏的内容容器，标题文字在它里面 |
+| `.titlebar-text` | 居中的标题文字，宽高铺满标题栏 |
+| `.titlebar-button-container.mod-left` | 左端的菜单按钮容器 |
+
+`.titlebar-text` 覆盖整个标题栏，它没有声明 `no-drag`，因此不会破坏拖动。真正会把拖动切掉的只有元素上的 `-webkit-app-region: no-drag`。
+
 ## 3. 版本号
 
 官方有两个版本概念：
