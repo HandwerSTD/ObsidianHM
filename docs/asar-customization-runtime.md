@@ -4,7 +4,7 @@
 
 运行时注入指由外层引导脚本（`web_engine/src/main/resources/resfile/resources/app/main.js`）或由它注入渲染进程的脚本施加改动。这样升级内核时不需要因为官方改写而重新定位这些改动。
 
-本文件的判定已完成设备实测验证，实测细节见 `docs/runtime-inject-verification.md`。实测确认：官方原版 asar 能被加载运行，外层注入能执行，remote 能被开启，设备上的 Electron 真实版本为 `5.0.0-Release`。
+本文件的判定已完成设备实测验证，实测细节见 `docs/runtime-inject-verification.md`。第 1 节的判定依据是官方内部机制的摘要，完整记录集中在 `docs/obsidian-internals.md`。实测确认：官方原版 asar 能被加载运行，外层注入能执行，remote 能被开启，设备上的 Electron 真实版本为 `5.0.0-Release`。
 
 asar 与官方原版逐字节一致，md5 `bbae59d36fe60500436a82cb841d5ad6`，25783388 字节。
 

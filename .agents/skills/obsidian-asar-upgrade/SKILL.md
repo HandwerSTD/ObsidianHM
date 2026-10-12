@@ -7,6 +7,7 @@ description: 升级 OHsidian 内置的 Obsidian 内核版本（升级 asar、跟
 
 本仓库把官方 Obsidian 发布版 asar 原样放进 app 目录，全部定制由外层运行时注入施加。asar 内没有任何补丁。
 
+- 官方内部机制（通道、全局、i18n 取词、设置页、标题栏、版本号、平台差异）：`docs/obsidian-internals.md`
 - 归属判定与最终状态：`docs/asar-customization-runtime.md`
 - 实测记录：`docs/runtime-inject-verification.md`
 - 升级过程积累的官方两版差异：`docs/asar-upgrade.md`（第 3、4 节仍有参考价值；第 5 节起的构建脚本说明对应的是已停用的构建期打补丁路线，构建脚本在 `tools/`）
@@ -57,7 +58,11 @@ for s in [b'hcs-login',b'huawei-cloud-sync',b'OHsidian',b'qtray',b'exit-to-tray'
 
 ### 3. 复核注入点
 
-asar 换代后压缩变量会重排，但外层与注入脚本都不引用 asar 内部的压缩变量，因此**通常无需改动**。需要复核的是它们依赖的官方接口与结构是否还在。逐项对照：
+asar 换代后压缩变量会重排，但外层与注入脚本都不引用 asar 内部的压缩变量，因此**通常无需改动**。需要复核的是它们依赖的官方接口与结构是否还在。
+
+下面给出注入点到官方接口的对照。每一项的官方机制细节（通道清单、全局对象、i18n 取词、设置页结构、标题栏、版本号、平台分支）见 `docs/obsidian-internals.md`。
+
+逐项对照：
 
 **主进程（`main.js`）**
 
