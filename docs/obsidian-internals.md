@@ -319,6 +319,43 @@ setVisibility  then
 
 `addButton`、`addExtraButton`、`addToggle`、`addText` 等传入的是回调，回调参数才是组件实例（`ButtonComponent` 等），`setButtonText`、`setCta`、`setIcon`、`onClick` 属于组件而不属于 `Setting` 容器。
 
+#### 2.3.5 定义项里的实例引用
+
+定义项的 `render` 除了画界面，还会把当时的 `Setting` 实例存到页面对象的属性上，供随后重画时使用。「关于」页的两个例子：
+
+| 定义项 | 存入的属性 | 随后的使用 |
+|--------|------------|------------|
+| 账号分组里的商用许可证项 | `this.commercialLicenseSetting` | `render` 末尾直接调用 `this.updateAccountSettings()` |
+| 版本项 | `this.currentVersionSetting` | 由 `updateVersionSetting()` 调用 |
+
+`updateAccountSettings()` 第一句就是：
+
+```js
+this.accountSetting.clear(), this.catalystSetting.clear(), this.commercialLicenseSetting.clear()
+```
+
+因此该条目即使不显示，`render` 也必须执行、必须把实例存进去。把这一项从定义列表里删掉，`render` 不会调用，属性保持 `undefined`，随后 `clear()` 就抛出异常，账号分组里其余条目的渲染一并中断。
+
+`Setting.clear()` 只清空控件（`controlEl.empty()`、`components=[]`）并保留行本身。
+
+#### 2.3.6 隐藏某一行的正确做法
+
+定义项上有一个 `visible` 字段，渲染流程每次都会用它重置该行的显示状态：
+
+```js
+function _2(e) {
+  var n = z2(e.def.visible, true);
+  e.settingEl.toggle(n);
+  ...
+}
+```
+
+`z2(e, t)` 在字段为 `undefined` 时返回默认值 `t`（此处为 `true`）；字段是函数时调用它取返回值。分组的显示条件类似（`U2`），且额外要求组内至少有一行可见。
+
+因此隐藏一行应当在定义项上置 `visible: false`。在 `render` 里调 `setting.setVisibility(false)` 会被随后的 `_2` 重新显示，因为该定义项没有 `visible` 字段，`z2` 按 `true` 处理。
+
+同一套 `visible` 字段也是官方自己控制显示的方式，例如导出设置里的 `n.setVisibility(t)` 配合渲染时的重置。
+
 ### 2.4 弹窗
 
 设置界面在 1.13.4 起默认在独立窗口打开，路径是：

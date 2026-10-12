@@ -161,6 +161,8 @@
   // ---------------------------------------------------------------
   // 3. 「华为云同步」设置页。
   //
+  // 页面仍然注册并保持可用，但侧栏入口隐藏。
+  //
   // 基类取法：优先 window.require('obsidian') 暴露的 PluginSettingTab；
   // 该标识符是 webpack 闭包变量，取不到时从已有设置页用原型链回溯。
   // 这条回退是必需的：Setting 容器的 isPluginSettingTab 用 instanceof
@@ -338,6 +340,28 @@
     return HcsSettingsTab;
   }
 
+  // 隐藏「华为云同步」在设置侧栏里的入口。
+  //
+  // 由 addSettingTab 生成的入口元素带 data-setting-id 属性，取值等于页签的 id。
+  // 样式挂在 body 上而不是 head：设置弹窗由 window.open("about:blank") 造出，
+  // 它的 head 又会被官方在每次打开时重新同步，挂在 body 上可以避免样式被覆盖。
+  // 用 !important 是为了盖过 .vertical-tab-nav-item 的默认 display。
+  function hideHcsTabEntry() {
+    try {
+      if (document.getElementById('ohsidian-hide-hcs-tab')) return;
+      var root = document.body || document.documentElement;
+      if (!root) return;
+      var style = document.createElement('style');
+      style.id = 'ohsidian-hide-hcs-tab';
+      style.textContent =
+        '.vertical-tab-nav-item[data-setting-id="huawei-cloud-sync"] { display: none !important; }';
+      root.appendChild(style);
+      log('华为云同步侧栏入口已隐藏');
+    } catch (e) {
+      log('隐藏华为云同步侧栏入口失败 ' + (e && e.message ? e.message : e));
+    }
+  }
+
   // 注册设置页。必须晚于 window.app 赋值（发生在 ready 回调里）。
   function registerHcsTab() {
     var app = window.app;
@@ -368,6 +392,7 @@
     var TabClass = buildHcsSettingsTabClass();
     try {
       app.setting.addSettingTab(new TabClass(app, app.setting));
+      hideHcsTabEntry();
       log('华为云同步页已注册，基类 ' + (Base.name || '匿名') + '，取法 ' + baseSource +
         '，已存在页数 ' + (app.setting.settingTabs ? app.setting.settingTabs.length : -1));
       return true;
@@ -468,26 +493,58 @@
   // 「关于」页同样是混合结构：版本、更新开关等平铺项在前，
   // 账号分组在中间，高级分组（含硬件加速、命令行）在最后。
   // 「贡献作者」放在高级分组之前，与仓库原有的位置一致。
+  // 商用许可证项在账号分组内，本项目不提供该购买入口，隐藏它。
   function patchAbout(items) {
     var list = items.items || items;
     if (!Array.isArray(list)) return items;
+
+    // 隐藏商用许可证项。它在账号分组内，名称由 i18n 键
+    // setting.account.option-commercial-license 生成（中文界面下为「商用许可证」）。
+    // 名称逐字比较，不用关键词匹配，避免误伤其它条目。
+    //
+    // 做法是在定义项上置 visible:false。渲染流程 U2 → _2 里执行的是：
+    //   e.settingEl.toggle(z2(e.def.visible, true))
+    // 定义项没有 visible 字段时 z2 返回默认 true，把行重新显示出来，
+    // 因此在 render 里调 setVisibility(false) 会被随后的这一步覆盖掉。
+    //
+    // 条目不能从列表里删除：官方在 render 里把这条例目的 Setting 实例
+    // 存进 this.commercialLicenseSetting，紧接着调用 updateAccountSettings()，
+    // 而该方法第一句就对这个引用调用 clear()。引用变成 undefined 时
+    // 会立刻抛出异常，账号分组里其余条目的渲染也随之中断。
+    var hidden = 0;
+    var hideEntry = function (entry) {
+      if (!entry || entry.name !== '商用许可证') return;
+      entry.visible = false;
+      hidden += 1;
+    };
+    for (var h = 0; h < list.length; h++) {
+      var groupEntry = list[h];
+      if (groupEntry && groupEntry.type === 'group' && Array.isArray(groupEntry.items)) {
+        for (var m = 0; m < groupEntry.items.length; m++) hideEntry(groupEntry.items[m]);
+      }
+      hideEntry(groupEntry);
+    }
+    if (hidden > 0) log('关于页已隐藏商用许可证项 ' + hidden + ' 处');
+
+    var exists = false;
     for (var i = 0; i < list.length; i++) {
       var entry = list[i];
       if (entry && entry.type === 'group' && Array.isArray(entry.items)) {
         for (var j = 0; j < entry.items.length; j++) {
           var inner = entry.items[j];
-          if (inner && inner.name === '贡献作者') return items;
+          if (inner && inner.name === '贡献作者') exists = true;
         }
       }
-      if (entry && entry.name === '贡献作者') return items;
+      if (entry && entry.name === '贡献作者') exists = true;
     }
+    if (exists) return items;
     list.splice(1, 0, {
       name: '贡献作者',
-      desc: '@MikannQAQ',
+      desc: '@MikannQAQ @HandwerSTD',
       render: function (setting) {
         setting.addButton(function (button) {
           return button.setButtonText('打开').onClick(function () {
-            window.open('https://github.com/HandwerSTD/OHSidian', '_external');
+            window.open('https://github.com/HandwerSTD/ObsidianHM', '_external');
           });
         });
       }
@@ -564,6 +621,7 @@
     applyTitlebarText();
     applyDocumentTitle();
     applyStarterStyles();
+    hideHcsTabEntry();
   }, 0);
 
   // 标题栏文字会被官方在用文档标题覆盖，观察一段时间内的变化。

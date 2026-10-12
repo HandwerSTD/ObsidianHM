@@ -70,8 +70,10 @@ HarmonyOS port: desktop auto-update is disabled
 
 ```
 [INJECT] 华为云同步页已注册，基类 t，取法 prototype，已存在页数 10
+[INJECT] 华为云同步侧栏入口已隐藏
 disable-update 被调用，参数 （读取）
 [INJECT] 外观页已插入退出软件开关；所在分组=高级 位置=1 该分组项名=自定义应用图标|退出软件
+[INJECT] 关于页已隐藏商用许可证项 1 处
 [INJECT] 关于页已插入贡献作者条目；前四项名=HarmonyOS-|贡献作者|自动更新|接收内部版本
 [INJECT] 设置页注入结束；外观页=true 关于页=true，页签数 10，页签 id=about,appearance,interface,editor,file,hotkeys,keychain,plugins,community-plugins,huawei-cloud-sync
 ```
@@ -92,7 +94,9 @@ disable-update 被调用，参数 （读取）
 | i18next 包装 | `i18next.t 已包装` |
 | 窗口按钮与右边距 | `自绘窗口按钮已隐藏`（或 `（样式已随窗口中继）`），随后 `setWindowButtonVisibility=true --frame-right-space=126px` |
 | 设置页基类回溯 | `华为云同步页已注册，基类 <名>，取法 prototype` |
+| 华为云同步入口隐藏 | `华为云同步侧栏入口已隐藏`，且在设置弹窗内也能看到（样式挂在 body） |
 | 两个设置页包装 | `外观页=true 关于页=true`，页签列表末尾是 `huawei-cloud-sync` |
+| 商用许可证项隐藏 | `关于页已隐藏商用许可证项 1 处` |
 | 开关插入位置 | `所在分组=高级 位置=1` |
 | 贡献作者插入位置 | `前四项名=HarmonyOS-\|贡献作者\|自动更新\|接收内部版本` |
 
@@ -131,7 +135,8 @@ Uncaught
 | 标题栏右端只有三个按钮 | 系统按钮与自绘按钮重合过。若出现两套，说明 `自绘窗口按钮已隐藏` 未生效 |
 | 笔记页面右上角避开系统按钮 | 日志的按钮调整行末尾有 `--frame-right-space=126px`。若该行缺这个变量，检查该句是否排在了取 `remote` 之后 |
 | 设置子窗口只有一套按钮 | 该窗口带 `is-popout-modal`，官方把主窗口的样式继承过去（日志为 `自绘窗口按钮已隐藏（样式已随窗口中继）`） |
-| 「关于」页有「贡献作者」条目 | 应紧跟在版本项之后 |
+| 「关于」页有「贡献作者」条目 | 应紧跟在版本项之后，内容为 `@MikannQAQ @HandwerSTD` |
+| 「关于」页无「商用许可证」项 | 在账号分组内，与「你的账户」「Catalyst 许可」同组 |
 | 托盘图标出现且可点击 | 验证 `tray.png` 与托盘初始化 |
 | 关闭仓库窗口最小化到托盘 | 验证 `close` 事件拦截 |
 | 「退出软件」开关生效 | 关闭后点窗口的关闭按钮应真的退出 |

@@ -58,12 +58,25 @@ asar 加载失败，或注入脚本抛错。两者的判据不同：
 
 ```
 [INJECT] 外观页已插入退出软件开关；所在分组=高级 位置=1 该分组项名=自定义应用图标|退出软件
+[INJECT] 关于页已隐藏商用许可证项 1 处
 [INJECT] 关于页已插入贡献作者条目；前四项名=HarmonyOS-|贡献作者|自动更新|接收内部版本
 ```
 
 位置错误通常意味着官方改了设置页的分组结构。「外观」页期望插进最后一个分组（「高级」），定位锚点是条目名以「半透明」开头；「关于」页期望插在平铺数组的第二位。
 
 处置：解包新版 asar 的 `app.js`，查看该页 `getSettingDefinitions` 的分组结构，更新 `patchAppearance` / `patchAbout` 的定位方式。
+
+### 设置项隐藏后仍可见
+
+在 `render` 里调 `setting.setVisibility(false)` 不生效，因为渲染流程的 `_2` 每次都会用 `z2(e.def.visible, true)` 重置该行。没有 `visible` 字段时按 `true` 处理。
+
+正确做法是在定义项上置 `visible: false`。`z2(e, t)` 在字段为 `undefined` 时返回默认值，字段是函数时调用它取返回值。详见 `docs/obsidian-internals.md` 的 2.3.6。
+
+### 隐藏一行后同组其余行也不显示
+
+账号分组里隐藏「商用许可证」时删除定义项，会导致 `this.commercialLicenseSetting` 保持 `undefined`，而 `updateAccountSettings()` 会直接调用它的 `clear()`，抛出异常并中断该分组后续渲染。
+
+处置：保留定义项，置 `visible: false`。
 
 ### 设置页能注册但内容空白
 

@@ -171,6 +171,8 @@ app.on("activate", () => { be = !1; BrowserWindow.getAllWindows().length === 0 &
 | 「退出软件」开关 | 运行时注入 |
 | 「关于」页版本项改写 | 运行时注入 |
 | 「贡献作者」条目 | 运行时注入 |
+| 「商用许可证」项隐藏 | 运行时注入（新增，详见 4.6） |
+| 「华为云同步」侧栏入口隐藏 | 运行时注入（新增，详见 4.9） |
 | 标题栏文字 `OHsidian` | 运行时注入 |
 | 5 处 `window.close()` | 不处理，保留官方行为。详见 5.2 |
 | i18n 的 7 个键 | 运行时注入 |
@@ -188,8 +190,6 @@ app.on("activate", () => { be = !1; BrowserWindow.getAllWindows().length === 0 &
 | `icon.png` 替换、`tray.png` 新增 | 保留（复制文件） |
 | 移除 `icon.png.bak`、`harmonyos-sync-bridge.js` | 已消除 |
 | starter 品牌 logo 改写 | 放弃，采用官方行为 |
-| 商业许可证改名「社区许可证」 | 放弃，采用官方行为 |
-| 许可证激活弹窗改为静态说明 | 放弃，采用官方行为 |
 | `vault-move` 通道删除 | 已消除 |
 
 外层引导脚本已经承载的五项，在表中单列：
@@ -460,21 +460,27 @@ p.length>0&&n.push({type:"group",heading:tie.optionAdvanced(),items:p}),n}
 
 **决策：运行时注入。**
 
-在「关于」页的版本项之后追加一项，内容为 `@MikannQAQ` 与仓库地址按钮。做法与 4.4 相同。
+在「关于」页的版本项之后追加一项，内容为 `@MikannQAQ @HandwerSTD`，按钮打开 `https://github.com/HandwerSTD/ObsidianHM`。做法与 4.4 相同。
 
-### 4.6 商业许可证改名「社区许可证」
+### 4.6 「商用许可证」项
 
-**决策：放弃，采用官方行为。**
+**决策：运行时注入，隐藏该项。**
 
-仓库版本把此项改名为「社区许可证」，并改写无 key 时的描述与按钮文案。1.13.4 里相关文案键都在（`labelCommercialLicense` 命中 2 次，值 `"Commercial license"`）。
+该项在账号分组内，`name` 由 i18n 键 `setting.account.option-commercial-license` 生成，中文界面下为「商用许可证」。注入脚本在定义项上置 `visible: false`。
 
-这属于产品层面的改写，与内核升级无关，不再保留。
+必须在定义项上置 `visible: false`，不能在 `render` 里调 `setVisibility(false)`。渲染流程的 `_2` 每次都会用 `z2(e.def.visible, true)` 重置该行，没有这个字段时按 `true` 处理，把 `render` 里的隐藏覆盖回去。详细机制见 `docs/obsidian-internals.md` 的 2.3.6。
 
-### 4.7 许可证激活弹窗改为静态说明
+本仓库的「商用许可证」项有 1 处。
 
-**决策：放弃，采用官方行为。**
+条目不能从定义列表里删除：官方在 `render` 里把这条例目的 `Setting` 实例存进 `this.commercialLicenseSetting`，随后由 `updateAccountSettings()` 调用该引用的 `clear()`。删除定义项后 `render` 不执行，引用保持 `undefined`，`clear()` 立即抛出异常，账号分组里其余条目的渲染随之中断。置 `visible: false` 保留实例，两者互不影响。
 
-仓库版本把激活弹窗改成静态说明。做法是替换弹窗类的 `open()` 或 `onOpen()`。同样属于产品层面的改写，不再保留。
+### 4.7 「华为云同步」侧栏入口
+
+**决策：运行时注入，隐藏入口，页面保持可用。**
+
+由 `addSettingTab` 生成的入口元素带 `data-setting-id` 属性，取值等于页签的 `id`。隐藏用的样式规则写在 `body` 上：设置弹窗由 `window.open("about:blank")` 造出，它的 `head` 会被官方在每次打开时重新同步，而 `body` 上的样式不受影响。
+
+隐藏入口，不删除页签注册。`settingTabs` 里仍有这一项，`openTabById("huawei-cloud-sync")` 仍能打开。
 
 ### 4.8 installer 版本比较对象
 
