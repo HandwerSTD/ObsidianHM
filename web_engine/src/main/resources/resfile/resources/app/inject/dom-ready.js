@@ -448,7 +448,9 @@
     return items;
   }
 
-  // 设置页的包装要等 window.app 出现。轮询等待，最多 30 秒。
+  // 设置页的包装要等 window.app 出现。轮询等待，最多 15 秒。
+  // 起始窗口（starter.html）也会加载本脚本，但它没有 window.app，
+  // 轮询会自然结束；这是正常情况，不算失败。
   var appAttempts = 0;
   var appTimer = setInterval(function () {
     appAttempts += 1;
@@ -467,9 +469,14 @@
       }, 500);
       return;
     }
-    if (appAttempts >= 300) {
+    if (appAttempts >= 150) {
       clearInterval(appTimer);
-      log('等待 window.app 超时，设置页注入放弃');
+      // 起始窗口与帮助窗口没有 window.app，不需要设置页注入。
+      if (document.querySelector('.starter')) {
+        log('当前为起始窗口，无需设置页注入');
+      } else {
+        log('等待 window.app 超时，设置页注入放弃');
+      }
     }
   }, 100);
 

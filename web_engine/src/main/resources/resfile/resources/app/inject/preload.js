@@ -1,14 +1,16 @@
 // 渲染进程注入脚本：最早的时机。
 //
-// 在 window 对象上做三处覆盖，必须在页面脚本执行之前完成：
-//   1. window.close 置为空函数。官方在「打开仓库成功」后的五处调用点会关掉
-//      当前窗口。起始窗口被改造成仓库窗口之后，这些调用会把窗口关掉。
-//   2. i18next.t 包装。官方在页面脚本里用 i18next.t 取自定义键，
+// 在 window 对象上做两处处理，必须在页面脚本执行之前完成：
+//   1. i18next.t 包装。官方在页面脚本里用 i18next.t 取自定义键，
 //      包装后可以补入本项目的键值与中文文案。
-//   3. 平台标记。供 dom-ready.js 判断当前形态。
+//   2. 向外层转写日志。渲染进程没有写文件的接口，诊断输出需要经主进程落盘。
 //
 // 本文件由外层 main.js 在 browser-window-created、did-start-navigation、
 // dom-ready 三处注入，脚本自身用标志位保证幂等。
+//
+// 这里不覆盖 window.close。asar 是官方原版，起始窗口打开仓库后靠它自己关闭，
+// 屏蔽它会连带破坏三处：起始窗口残留、切换仓库时旧窗口关不掉、设置弹窗关闭失效。
+// 「关窗不退出」由外层对仓库窗口的 close 拦截与托盘提供，与渲染进程无关。
 
 'use strict';
 
@@ -29,15 +31,7 @@
 
   window.__ohsidianLog('preload 开始施加');
 
-  // 1. window.close 置为空函数。
-  try {
-    window.close = function () {};
-    window.__ohsidianLog('window.close 已屏蔽');
-  } catch (e) {
-    window.__ohsidianLog('window.close 屏蔽失败 ' + (e && e.message ? e.message : e));
-  }
-
-  // 2. 包装 i18next.t。
+  // 1. 包装 i18next.t。
   //
   // 键的形态：官方先把驼峰属性名转成 kebab-case 并补一个点，
   // 例如 md.setting.about.labelVersion 最终以 "setting.about.label-version" 取值。
@@ -111,8 +105,6 @@
       if (done) {
         window.__ohsidianLog('i18next.t 已包装');
       } else if (document.location.href === 'about:blank' || !document.querySelector('script')) {
-        // 设置弹窗由 window.open("about:blank") 造出，不加载任何脚本，
-        // 其中的文案由主窗口直接写入 DOM，因此没有 i18next 是正常现象。
         window.__ohsidianLog('i18next 未出现，当前为设置弹窗，无需包装');
       } else {
         window.__ohsidianLog('i18next 未出现，包装放弃');

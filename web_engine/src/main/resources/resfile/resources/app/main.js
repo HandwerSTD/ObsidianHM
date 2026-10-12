@@ -139,6 +139,16 @@ let exitToTrayEnabled = true;
 let quitRequested = false;
 let trayIcon = null;
 
+// 窗口登记与窗口生命周期。
+//
+// 与官方一致：起始窗口打开仓库成功后自己关闭，仓库窗口关闭时按官方逻辑退出应用
+// （非 darwin 平台上 window-all-closed 会调 app.quit）。不在这里复现仓库版本原来
+// 的「窗口复用」——那需要改写 asar 内部的窗口创建分支，外层拿不到等价接口。
+//
+// 本层只做一件与官方不同的事：「关窗不退出」。仓库窗口的 close 被拦下并隐藏，
+// 托盘提供「显示」与「退出软件」两个出口。这条路径不涉及渲染进程，
+// 因此注入脚本不需要覆盖 window.close。
+
 // 已创建的窗口。托盘菜单与「显示」菜单项需要一个可聚焦的窗口。
 // 键是窗口 id，值是 BrowserWindow。窗口关闭时移除。
 let knownWindows = new Map();
@@ -693,9 +703,12 @@ function installTray() {
 	return trayIcon;
 }
 
-// 关窗到托盘。只拦截仓库窗口；起始窗口与帮助窗口保持官方的关闭行为。
-// 官方的关闭处理器在事件上设了 3 秒后的销毁定时器，它会在那时读
-// defaultPrevented，我们提前 preventDefault 即可让它不再销毁。
+// 关窗到托盘。只拦截仓库窗口；起始窗口与帮助窗口保持官方的关闭行为
+// （起始窗口打开仓库成功后自己关闭）。
+//
+// 官方在窗口的 close 事件上设了一个 3 秒后的销毁定时器，它会在那时检查
+// defaultPrevented。这里提前 preventDefault 即可让官方不再销毁。
+// quitRequested 为真时直接放行，否则 app.quit() 也会被这里挡住，应用关不掉。
 function installCloseToTray(window) {
 	window.on('close', function (event) {
 		if (quitRequested || !exitToTrayEnabled) return;
