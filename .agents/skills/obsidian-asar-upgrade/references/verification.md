@@ -1,137 +1,145 @@
 # 验证判据
 
-本文件列出升级后要核对的每一项，以及每项的预期值。构建期的自动检查由 `tools/build-asar.mjs` 与 `scripts/verify-asar.mjs` 执行；设备上的检查需要人工确认。
+本文件列出替换 asar 后要核对的项目。项目使用官方发布版 asar 原样，定制由外层运行时注入施加，因此核对分两层：asar 本身是否纯净，注入是否在设备上生效。
 
-## 一、构建期自动检查
+## 一、asar 纯净度
 
-`tools/build-asar.mjs` 在打包之前完成以下检查，任一不通过即非零退出，不产出产物：
+替换 asar 后先确认它是官方原版。
 
-| 检查 | 内容 |
-|------|------|
-| 定位标记命中次数 | 每条替换的命中次数必须与预期相符 |
-| 关键片段存在与不存在 | `assertContains` / `assertAbsent`，含重复前缀自检 |
-| 括号计数 | `assertBalance`，偏离阈值即报错 |
-| 语法检查 | 对 `main.js`、`app.js`、`starter.js` 各做一次 `new vm.Script` |
-| 注入符号 | 注入 `app.js` 的代码只引用本版本解析出的符号 |
-
-## 二、产物静态检查
-
-```bash
-node .agents/skills/obsidian-asar-upgrade/scripts/verify-asar.mjs <产物路径> <版本号>
-```
-
-脚本逐项确认下面的定制点。缺一项即报出并退出码 1。用官方原始 asar 运行时应当报出四十余个问题，这是脚本有效性的反向验证方式。
-
-### main.js
-
-| 定制点 | 预期 |
-|--------|------|
-| 版本下限检查短路 | `if(false&&` 出现 1 次 |
-| 托盘图标路径 | `tray.png` 出现 1 次 |
-| 托盘对象与状态 | `qtray`、`Ee_tray` 各出现 2 次以上 |
-| 退出标志 | `before-quit` 出现 1 次 |
-| 开关与强制退出通道 | `"exit-to-tray"`、`"force-quit"` 各 1 次 |
-| 12 个云同步通道 | `hcs-get-status`、`hcs-sync-all`、`hcs-get-auto-sync`、`hcs-set-auto-sync`、`hcs-get-excluded`、`hcs-set-excluded`、`hcs-get-userid`、`hcs-set-userid`、`hcs-login`、`hcs-restore-list`、`hcs-restore-file`、`hcs-code` 各 1 次 |
-| 模块前缀未重复 | `l.l.`、`m.m.`、`C.C.` 各 0 次 |
-
-### app.js
-
-| 定制点 | 预期 |
-|--------|------|
-| 窗口按钮处理 | `[HMOS-FRAME]` 1 次、`setWindowButtonVisibility` 2 次、`--frame-right-space` 1 次 |
-| 云同步设置页 | `huawei-cloud-sync` 1 次、`HcsSettingsTab` 2 次、`addSettingTab(new HcsSettingsTab` 1 次、`华为云同步` 1 次以上 |
-| 退出软件开关 | `退出软件` 1 次、`exit-to-tray` 1 次以上 |
-| 设置页框架 | `getSettingDefinitions` 存在 |
-
-`setWindowButtonVisibility` 出现 2 次，因为补丁先判函数类型再调用，两处都在同一段插入代码内。
-
-### starter.js
-
-| 定制点 | 预期 |
-|--------|------|
-| 标题栏文字 | `OHsidian` 1 次以上 |
-| 打开仓库后不关窗 | `window.close()` 0 次 |
-
-### app.css
-
-| 定制点 | 预期 |
-|--------|------|
-| starter 标题栏隐藏 | `.starter .titlebar` 的规则体内为 `display: none` |
-| starter 顶部间距 | `padding-top: 30px` 1 次 |
-
-### i18n
-
-| 定制点 | 预期 |
-|--------|------|
-| 版本文案 | `HarmonyOS-{{version}}`、`HarmonyOS Port {{version}}` 各 1 次 |
-| 更新禁用说明 | `Updates are disabled. Running on HarmonyOS.` 1 次 |
-| 检查更新按钮 | `Updates not available` 1 次以上 |
-| 中文版本文案 | `HarmonyOS 移植版本 {{version}}` 1 次以上 |
-| 中文自动更新说明 | `HarmonyOS 移植版不支持自动更新。` 1 次 |
-
-### 文件与体积
-
-- 产物内必须有 `icon.png`、`tray.png`、`index.html`、`starter.html`、`help.html`。
-- `index.html`、`starter.html`、`help.html` 的标题为 `<title>OHsidian</title>`。
-- `harmonyos-sync-bridge.js` 与 `icon.png.bak` 按设计被移除，若仍在则提示。
-- 体积在 20–40 MB 之间。超出范围时确认输入是官方发布版 asar。安装包内的 `app.asar` 是外层加载器，体积远小于此，取错文件会在符号解析阶段报错。
-
-### 1.13.4 的基线值
+**基准值**（1.13.4）：
 
 | 项 | 值 |
 |----|----|
-| 字节数 | 27684486 |
-| md5 | `6746843bf8cfad21e4ac44dcee02e667` |
-| 文件数 | 381 |
+| 字节数 | 25783388 |
+| md5 | `bbae59d36fe60500436a82cb841d5ad6` |
+| 文件数 | 380 |
 
-其他版本的产物尺寸与 md5 都不同。只有同一版本、同一输入 asar 的重复构建才应完全一致。
+**定制字符串命中数必须全为 0**：
 
-## 三、设备验证
+```bash
+python3 -c "
+d=open('web_engine/src/main/resources/resfile/resources/app/obsidian.asar','rb').read()
+for s in [b'hcs-login',b'hcs-get-status',b'huawei-cloud-sync',b'OHsidian',b'qtray',b'exit-to-tray',b'[HMOS-FRAME]',b'harmonyos-sync-bridge']:
+    print(s.decode(), d.count(s))
+"
+```
 
-构建通过后安装：
+任一命中非 0 说明拿到的不是官方发布版，或替换时误用了此前的定制产物。
+
+也可以用脚本：
+
+```bash
+node .agents/skills/obsidian-asar-upgrade/scripts/verify-asar.mjs <asar 路径>
+```
+
+## 二、注入点在设备上是否生效
+
+安装启动后读日志：
 
 ```bash
 devecocli build
 devecocli run --skip-build --device <设备>
+hdc shell "tail -n 60 /data/app/el2/100/base/com.mikannqaq.obsidian/files/obsidian.log"
 ```
 
-### 读日志
+一轮正常启动的日志（时间戳 UTC，行序即实际顺序）：
 
-```bash
-hdc shell "tail -40 /data/app/el2/100/base/com.mikannqaq.obsidian/files/obsidian.log"
+```
+[PROBE] 版本改写：真实值 5.0.0-Release -> 现值 18.0.0
+字体兼容补丁监听已注册
+华为云同步通道已注册 12 个
+退出相关通道已注册
+已屏蔽 installer 版本提示
+Loaded main app package .../obsidian.asar
+HarmonyOS port: desktop auto-update is disabled
+[PROBE] WebContents 1 类型 window：remote 开启前 false 开启后 true
+托盘已初始化 .../app/tray.png
+[INJECT] preload 开始施加
+注入脚本已施加 preload.js WebContents 1 类型 starter
+[INJECT] dom-ready 注入开始
+注入脚本已施加 dom-ready.js WebContents 1 类型 starter
+[INJECT] 窗口按钮与右边距已调整，frame=hidden setWindowButtonVisibility=true --frame-right-space=126px
+[INJECT] 标题栏文字已改写 1 处
+[INJECT] 起始窗口样式已注入
+[INJECT] i18next.t 已包装
+[INJECT] 当前为起始窗口，无需设置页注入
 ```
 
-`obsidian.log` 是应用自己写的日志。hilog 里看不到应用的标准输出，只有这个文件可读。
+在起始窗口里打开一个仓库之后，同一条日志里应再出现一个 WebContents 的注入块，并且这一组：
 
-### 日志检查项
+```
+[INJECT] 华为云同步页已注册，基类 t，取法 prototype，已存在页数 10
+disable-update 被调用，参数 （读取）
+[INJECT] 外观页已插入退出软件开关；所在分组=高级 位置=1 该分组项名=自定义应用图标|退出软件
+[INJECT] 关于页已插入贡献作者条目；前四项名=HarmonyOS-|贡献作者|自动更新|接收内部版本
+[INJECT] 设置页注入结束；外观页=true 关于页=true，页签数 10，页签 id=about,appearance,interface,editor,file,hotkeys,keychain,plugins,community-plugins,huawei-cloud-sync
+```
 
-| 检查 | 预期 |
-|------|------|
-| asar 被加载 | `Loaded main app package` 后跟产物路径 |
+### 逐项判据
+
+| 项 | 判据 |
+|----|------|
+| 版本下限短路 | `版本改写：真实值 5.0.0-Release -> 现值 18.0.0` |
 | 自动更新关闭 | `HarmonyOS port: desktop auto-update is disabled` |
-| remote 已开启 | `[HMOS-REMOTE] 已开启 remote，WebContents <编号> 类型 window`，数量与打开的窗口数相符 |
-| 字体补丁注入 | `字体兼容补丁已注入渲染进程 <编号>` 多次出现 |
-| 无异常 | 不含 `UnhandledPromise`、`TypeError`、`ReferenceError`、`is not a function`、`is not defined`、`Cannot read` |
+| remote 提前开启 | `remote 开启前 false 开启后 true` |
+| 托盘 | `托盘已初始化 .../app/tray.png` |
+| 十二个 hcs 通道 | `华为云同步通道已注册 12 个` |
+| 退出通道 | `退出相关通道已注册` |
+| installer 提示屏蔽 | `已屏蔽 installer 版本提示` |
+| 字体补丁 | `字体兼容补丁已注入渲染进程 <编号>` 每个窗口多次 |
+| 注入脚本施加 | `注入脚本已施加 preload.js` 与 `dom-ready.js` |
+| i18next 包装 | `i18next.t 已包装` |
+| 窗口按钮与右边距 | `setWindowButtonVisibility=true --frame-right-space=126px` |
+| 设置页基类回溯 | `华为云同步页已注册，基类 <名>，取法 prototype` |
+| 两个设置页包装 | `外观页=true 关于页=true`，页签列表末尾是 `huawei-cloud-sync` |
+| 开关插入位置 | `所在分组=高级 位置=1` |
+| 贡献作者插入位置 | `前四项名=HarmonyOS-\|贡献作者\|自动更新\|接收内部版本` |
 
-启动阶段的正常序列：`字体兼容补丁监听已注册` → `Loaded main app package` → `HarmonyOS port: desktop auto-update is disabled` → `[HMOS-REMOTE] 已开启 remote，WebContents 1 类型 window` → `字体兼容补丁已注入渲染进程 1` ×4 → `[HMOS-REMOTE] 已开启 remote，WebContents 2 类型 window` → `字体兼容补丁已注入渲染进程 2`。
+### 异常关键字
+
+日志中不应出现：
+
+```
+TypeError
+is not a function
+is not defined
+Cannot read
+Uncaught
+抛错
+注册失败
+注入失败
+包装放弃       （起始窗口与仓库窗口上不应出现）
+等待 window.app 超时
+```
+
+两条不算失败：
+
+- `i18next 未出现，当前为设置弹窗，无需包装`。设置弹窗由 `window.open("about:blank")` 造出，不加载任何脚本。
+- `当前为起始窗口，无需设置页注入`。起始窗口没有 `window.app`。
 
 ### 界面检查项
 
-以下需要人工确认，或取得用户明确授权后由子代理执行。不要自行操作设备。
+以下需要用户确认，不要自行操作设备。
 
 | 检查 | 说明 |
 |------|------|
-| 设置界面能打开 | 1.13.4 起默认在独立窗口打开。无法打开通常意味着 remote 未提前开启 |
-| 独立设置窗口出现 | 日志中应随之出现新的 `[HMOS-REMOTE] 已开启 remote` |
-| 「华为云同步」设置页出现 | 验证 `HcsSettingsTab` 已注册 |
-| 含非内嵌字体的 PDF 能渲染 | 验证 `FontFace` 补丁在页面导航后重新注入 |
-| `obsidian://` 链接能派发 | 验证外层队列轮询 |
+| 起始窗口打开仓库后自己关闭 | 官方行为。如果不关闭，说明某处覆盖了 `window.close` |
+| 设置界面能打开 | 1.13.4 起默认在独立窗口打开。打不开通常意味着 remote 未提前开启 |
+| 「华为云同步」设置页出现 | 验证设置页基类回溯与注册 |
+| 「外观」页有「退出软件」开关 | 应位于「高级」分组、自定义应用图标之后 |
+| 「关于」页有「贡献作者」条目 | 应紧跟在版本项之后 |
 | 托盘图标出现且可点击 | 验证 `tray.png` 与托盘初始化 |
-| 关闭窗口最小化到托盘 | 验证 `close` 事件拦截 |
-| 「退出软件」开关生效 | 验证 `exit-to-tray` 通道往返 |
+| 关闭仓库窗口最小化到托盘 | 验证 `close` 事件拦截 |
+| 「退出软件」开关生效 | 关闭后点窗口的关闭按钮应真的退出 |
+| 含非内嵌字体的 PDF 能渲染 | 验证 `FontFace` 补丁在导航后重新注入 |
+| `obsidian://` 链接能派发 | 验证外层队列轮询 |
 
-## 四、日志判读的两个要点
+## 三、日志判读的两个要点
 
 **日志时间早于进程启动时间**时，说明当前运行的进程没有写日志。用 `hdc shell date` 与进程的启动时刻对照，两者应处在同一时刻。
 
-**进程存在不等于界面正常。** 进程可能处于休眠、占用大量虚拟内存、系统日志里没有任何输出。判据是 `obsidian.log` 有新记录。
+**进程存在不等于界面正常。** 判据是 `obsidian.log` 有新记录。设备上的 `console.log` 既不进这个文件，也不出现在 hilog 里，只有 `log()` 与注入脚本经 `ohsidian-log` 通道转写的行会写盘。
+
+## 四、构建期打补丁路线的判据（已停用）
+
+`tools/build-asar.mjs` 是构建期打补丁的实现，改为运行时注入后不再参与构建。若日后需要把某项定制改回补丁，其产物校验方式见 `docs/asar-upgrade.md` 第 7 节，校验脚本为 `scripts/verify-asar.mjs`（当前它的判断依据是「定制是否施加到产物」，与本文件的 asar 纯净度检查方向相反）。

@@ -1,104 +1,27 @@
-# 报错处置
+# 报错与处置
 
-本文件按报错来源分组。每条给出报错原样、原因与处置办法。
+本文件按现象列出对应处置。当前路线是官方 asar 原样加外层运行时注入，因此排查重点在注入是否生效，以及替换 asar 后官方接口是否变化。
 
-## 一、构建期
+## 一、替换 asar 之后
 
-### 定位标记命中 0 次
+### asar 校验报出定制残留
 
-```
-[app.js] app.about-version: 定位标记命中 0 次，预期 1 次。
-标记: t.setName(Fee.labelVersion({version:td.version}))...
-```
-
-官方改写了该处结构，脚本里的标记在新版中不存在。
-
-处置：打开新版文件，找到该处的新写法，更新 `tools/build-asar.mjs` 里对应的 `find` 与替换文本。如果只是插入点外侧的局部变量名变了，改用 `replacePattern` 把可变部分捕获下来再拼回替换文本。
-
-### 定位标记命中 N 次，预期 1 次
-
-标记在新版中出现多次，无法确定改哪一处。
-
-处置：扩大标记的前后文，使其唯一。例如加上前面的模块前缀、或者加入该处独有的字符串。
-
-### 定位模式命中 N 次，预期 M 次
-
-与上一条相同，针对 `replacePattern`。
-
-### 补丁后语法检查未通过
+用 `scripts/verify-asar.mjs` 检查时若报出定制字符串，说明该文件不是官方发布版。
 
 ```
-[main.js] 补丁后语法检查未通过: Unexpected token ')'
+发现 23 个问题：
+  - asar 内出现定制字符串 5 次："hcs-login"
+  - 出现非官方文件：/tray.png
+  - asar 内 package.json 的 author 为 "OHsidian"，官方原版应为 "Obsidian"
 ```
 
-补丁破坏了语句结构。三种常见原因：
+处置：核对来源路径与 md5。1.13.4 的官方原版是 25783388 字节、md5 `bbae59d36fe60500436a82cb841d5ad6`。不要拿此前的定制产物当输入。
 
-1. 替换时把定位标记前面的前缀一并吃掉，或留下未闭合的花括号。检查替换文本首尾与标记首尾是否衔接。
-2. 替换文本里的 `else` 匹配到了外层的 `if`，导致花括号失衡。把 `if`/`else` 分支都包在花括号里。构建脚本在 `main.reuse-existing-vault-window` 这条上有对应注释。
-3. 去掉换行时未先剔除整行注释，行尾注释把后续代码注释掉了。`buildHcsSettingsTab` 渲染时先按行剔除注释再去掉换行。
+### 新 asar 不生效，界面仍是旧版本
 
-### 括号计数偏离过大
+`web_engine/src/main/resources/resfile/resources/app/package.json` 的 `version` 未同步修改。外层 `currentBaseVersion` 取自它的 `version`，`app.getVersion()` 同样读它，启动扫描 userData 时用 `isV2MoreRecent(app.getVersion(), version)` 判断新 asar 是否被采用。
 
-```
-[main.js] xxx: 括号计数偏离过大（圆括号 210，花括号 5），可能存在截断。
-```
-
-替换时吃掉了大段内容。检查替换文本是否在正确位置结束。
-
-### 未找到任何两参数的标识符调用
-
-```
-未找到任何两参数的标识符调用，无法确定继承辅助函数
-```
-
-`app.js` 的结构变化超出解析器的描述范围。检查新版里类的写法是否仍是 `辅助函数(子类, 基类)`。
-
-### 继承辅助函数的判定不明确
-
-```
-继承辅助函数的判定不明确：最高频 v(900 次) 与次高频 m(400 次) 差距不足三倍。
-候选：v(900), m(400), ...
-```
-
-两个候选的频次接近，无法判定。处置：在 `tools/lib/symbols.mjs` 的 `findExtendHelper` 里加入额外判据，例如要求两边都是标识符、或该函数定义在文件前部。
-
-### 其余角色判定失败
-
-各解析函数的报错形如：
-
-```
-userData 目录的判定失败，命中 2 个：R, x
-主仓库窗口创建函数的判定失败，命中 0 个：
-设置页基类的判定失败：按 containerEl=createDiv("vertical-tab-content") 命中 0 个候选。
-```
-
-处置：打开新版 `main.js` 或 `app.js`，找到该角色对应的结构，更新 `tools/lib/main-symbols.mjs` 或 `tools/lib/symbols.mjs` 里的判定条件。不要改成按压缩变量名匹配。
-
-### tools/hcs-settings-tab.js 引用了非本版本的标识符
-
-```
-tools/hcs-settings-tab.js 引用了非本版本的标识符:
-  未替换的占位符 __SETTING_ITEM__
-   new FooBar(
-```
-
-占位符未替换，或模板引用了不在已解析符号内的名字。处置：确认 `buildHcsSettingsTab` 替换了全部占位符；若模板里新引入了符号，在 `tools/lib/symbols.mjs` 的 `resolveAppIdentifiers` 里增加对应的解析结果，并在 `buildHcsSettingsTab` 的替换列表里加上。
-
-### 输入文件不存在 / 缺少必需参数
-
-```
-缺少必需参数 --version
-```
-
-三个参数 `--input`、`--output`、`--version` 都必需。
-
-### 资源文件不存在
-
-```
-资源文件不存在: .../resources/app/tray.png
-```
-
-仓库里缺少 `tray.png` 或 `icon.png`。这两个文件在 `web_engine/src/main/resources/resfile/resources/app/` 下。
+处置：改这个字段，重新构建安装。这一项是当前唯一的必需改动，见 `docs/asar-customization-runtime.md` 第 7.1 节。
 
 ## 二、运行期
 
@@ -106,37 +29,85 @@ tools/hcs-settings-tab.js 引用了非本版本的标识符:
 
 设置页在独立窗口中打开时，其渲染进程在建立后立即同步调用 `remote.getCurrentWindow()`，而 asar 内部要到 `did-create-window` 才开启 remote。
 
-处置：确认外层 `web_engine/src/main/resources/resfile/resources/app/main.js` 里有 `app.on('web-contents-created', ...)` 并在其中调用 `remote.enable(contents)`。这个时机在 WebContents 创建当下，早于该 WebContents 上的任何渲染进程脚本。
+处置：确认外层 `main.js` 里有 `app.on('web-contents-created', ...)` 并在其中调用 `remote.enable(contents)`。这个时机在 WebContents 创建当下，早于该 WebContents 上的任何渲染进程脚本。日志里对应行是 `remote 开启前 false 开启后 true`。
 
 ### 界面白屏，日志无异常
 
-`app.js` 的模块求值抛错，通常意味着补丁引用了新版本不存在的标识符。模块加载失败不会在 `obsidian.log` 里留下记录。
+asar 加载失败，或注入脚本抛错。两者的判据不同：
 
-处置：用 `node` 对补丁后的 `app.js` 做一次求值检查，或检查补丁文本里的每个标识符是否都来自本版本解析结果。`verify-asar.mjs` 的 `app.js` 一节覆盖了此项。
+- asar 加载失败时，日志里会出现 `Failed to require app package` 或 `Failed to load both app packages`。
+- 注入脚本抛错时，日志里会出现 `注入脚本施加失败` 并带出错误消息。
 
-### Cannot read properties of undefined (reading 'ipcMain')
+处置：前一种情况核对 asar 是否完整（md5）；后一种按错误消息定位到具体脚本。注入脚本的语法可用 `node --check` 单独验证。
 
-替换 `ipcMain.on(...)` 时未把模块前缀纳入定位标记，拼出了重复前缀（例如 `l.l.ipcMain`）。
+### 设置页未注册，日志出现「无法取得设置页基类」
 
-处置：确认标记以模块前缀开头。`verify-asar.mjs` 会检查 `l.l.`、`m.m.`、`C.C.` 三种拼法。
+日志：
 
-### m.readFileSync is not a function
+```
+[INJECT] 无法取得设置页基类，华为云同步页未注册
+```
 
-注入 `main.js` 的局部变量遮蔽了模块级别的 `fs` 别名。1.13.4 里 `fs` 的别名是 `m`。
+基类取法的回退路径依赖 `window.app.setting.settingTabs` 非空。1.13.4 的 `window.require('obsidian')` 在设备上抛 `Cannot find module 'obsidian'`，因此只能走回退路径。
 
-处置：注入代码的局部变量全部加 `_` 前缀。
+处置：确认 `window.app` 已出现（日志里有 `设置页注入结束`），以及 `settingTabs` 里有元素。官方若改变设置页的注册方式，需要更新 `inject/dom-ready.js` 的 `findSettingsTabBase`。
 
-### 新 asar 不生效，仍是旧版本界面
+### 设置项插到了错误的分组
 
-`web_engine/src/main/resources/resfile/resources/app/package.json` 的 `version` 未同步修改。启动扫描 userData 时用 `isV2MoreRecent(app.getVersion(), version)` 判断新 asar 是否比当前版本新。
+日志会打印插入结果：
 
-处置：改这个字段，重新构建。
+```
+[INJECT] 外观页已插入退出软件开关；所在分组=高级 位置=1 该分组项名=自定义应用图标|退出软件
+[INJECT] 关于页已插入贡献作者条目；前四项名=HarmonyOS-|贡献作者|自动更新|接收内部版本
+```
+
+位置错误通常意味着官方改了设置页的分组结构。「外观」页期望插进最后一个分组（「高级」），定位锚点是条目名以「半透明」开头；「关于」页期望插在平铺数组的第二位。
+
+处置：解包新版 asar 的 `app.js`，查看该页 `getSettingDefinitions` 的分组结构，更新 `patchAppearance` / `patchAbout` 的定位方式。
+
+### 设置页能注册但内容空白
+
+包装 `getSettingDefinitions` 之后必须再调一次 `tab.update()`。设置项的取值在 `Setting` 构造期间就被算出并缓存（`addSettingTab` 内部调用 `update()`，而 `update()` 做 `this.settingItems = this.getSettingDefinitions()`）。
+
+处置：确认 `patchPage` 里的 `tab.update()` 调用还在。
+
+### i18next 未包装
+
+日志：
+
+```
+[INJECT] i18next 未出现，包装放弃
+```
+
+出现在起始窗口或仓库窗口上时说明 `lib/i18next.min.js` 的加载方式变了。
+
+两条不算失败：设置弹窗上的 `i18next 未出现，当前为设置弹窗，无需包装`（弹窗由 `window.open("about:blank")` 造出，不加载脚本），以及起始窗口上的 `当前为起始窗口，无需设置页注入`。
+
+处置：解包新版 asar，确认 `i18next` 仍挂在 `window` 或 `self` 上，以及键仍是 kebab-case 形态。
 
 ### 托盘图标不出现
 
-日志中搜索 `Tray init failed`。托盘在 `whenReady` 之后延迟 1 秒初始化，失败会被 catch 并打印。
+日志中搜索托盘相关行：
 
-处置：确认产物内有 `tray.png`，以及外层 `main.js` 里托盘初始化引用的是资源目录下的 `tray.png`。
+```
+托盘图标不存在，跳过托盘初始化 <路径>
+托盘初始化失败 <错误>
+托盘菜单设置失败 <错误>
+```
+
+处置：确认 `web_engine/src/main/resources/resfile/resources/app/tray.png` 存在，且外层读取的路径是 `path.join(APP_PATH, 'tray.png')`。
+
+### 关闭窗口后应用退不掉
+
+`installCloseToTray` 用 `event.preventDefault()` 拦下仓库窗口的关闭，若 `quitRequested` 未在退出前置位，`app.quit()` 也会被拦住。
+
+处置：确认外层有 `app.on('before-quit', ...)` 置 `quitRequested = true`，以及 `force-quit` 通道在调 `app.quit()` 前也置了它。
+
+### 起始窗口打开仓库后不关闭
+
+`window.close` 被某个注入脚本覆盖了。覆盖会作用于每个渲染进程，连带破坏三处：起始窗口不关闭、「切换仓库」命令走不完、设置弹窗关不掉。
+
+处置：搜索注入脚本里是否有 `window.close = `。当前设计不覆盖它，见 `docs/asar-customization-runtime.md` 第 5.2 节。
 
 ### 应用的日志不再更新
 
@@ -149,15 +120,21 @@ tools/hcs-settings-tab.js 引用了非本版本的标识符:
 ### 读不到 bundle 内的 asar
 
 ```
-md5sum: /data/app/el1/bundle/public/com.mikannqaq.obsidian/.../obsidian.asar: Permission denied
+ls: /data/storage/el1/bundle/electron/resources/resfile/resources/app/: Permission denied
 ```
 
-bundle 目录不对普通 shell 开放。要核对产物，用仓库里的那份，或用 `verify-asar.mjs`。
+bundle 目录不对普通 shell 开放。要核对 asar，用仓库里的那份，或用 `scripts/verify-asar.mjs`。构建产物在 `electron/build/default/intermediates/res/default/resources/resfile/resources/app/` 下，可以直接读。
 
 ### hilog 里看不到应用输出
 
-应用的 `log()` 只写 `obsidian.log`。hilog 里能看到的只有系统与框架的输出。用 `hdc shell "tail -40 .../files/obsidian.log"` 读取。
+应用的 `log()` 只写 `obsidian.log`。`console.log` 在设备上既不进这个文件，也不出现在 hilog 里，因此注入脚本的诊断输出必须经 `ohsidian-log` 通道交给主进程写盘。
 
-### 构建脚本改为 debug 模式
+处置：用 `hdc shell "tail -n 60 .../files/obsidian.log"` 读取。
 
-`devecocli build` 会把 `web_engine/BuildProfile.ets` 改成 `BUILD_MODE_NAME = 'debug'` 与 `DEBUG = true`。发布前需要恢复为 `release` 与 `false`。
+### 构建把 BuildProfile 改成 debug
+
+`devecocli build` 会把 `web_engine/BuildProfile.ets` 改成 `BUILD_MODE_NAME = 'debug'` 与 `DEBUG = true`。发布前需要恢复为 `release` 与 `false`。这个文件的改动属于构建产生的副作用，不要提交。
+
+## 四、构建期打补丁路线（已停用）
+
+`tools/build-asar.mjs` 的报错对应已停用的路线。其报错格式是「补丁 id + 实际命中次数 + 候选列表」，处置是更新 `tools/build-asar.mjs` 里的定位标记或 `tools/lib/` 里的符号解析形状描述。完整说明见 `docs/asar-upgrade.md` 第 5 节。

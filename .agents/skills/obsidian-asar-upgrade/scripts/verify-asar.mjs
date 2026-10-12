@@ -1,13 +1,13 @@
-// 校验构建出的 obsidian.asar 是否带齐了全部定制。
+// 校验 app 目录下的 obsidian.asar 是否为官方发布版原样。
 //
-// 用法：node verify-asar.mjs <asar 路径> [目标版本号]
+// 用法：node verify-asar.mjs <asar 路径> [预期版本号]
 //
-// 逐项检查定制点是否存在、官方内容是否已被替换、文件是否齐全，
-// 并报告产物体积。任何一项不符即以非零退出。
+// 项目使用官方发布版 asar，全部定制由外层运行时注入施加，因此 asar 内
+// 不应含任何本项目字符串。本脚本检查这一点，并报告版本、体积与文件数。
+// 发现残留即以非零退出。
 //
-// 检查依据是产物里的字符串与结构，与构建脚本的补丁清单一一对应。
-// 版本升级后如果某项检查因官方改写而不再适用，按 docs/asar-upgrade.md
-// 的说明更新本文件的探针，不要放宽为「存在即可」的模糊判断。
+// 早期版本的脚本方向相反（检查「定制是否施加到产物」），对应的是构建期
+// 打补丁路线。那条路线已停用，说明见 docs/asar-upgrade.md 第 5 节。
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -17,7 +17,7 @@ const asarPath = path.resolve(process.argv[2] ?? '');
 const targetVersion = process.argv[3] ?? null;
 
 if (!asarPath || !fs.existsSync(asarPath)) {
-  console.error('用法：node verify-asar.mjs <asar 路径> [目标版本号]');
+  console.error('用法：node verify-asar.mjs <asar 路径> [预期版本号]');
   console.error(`找不到文件：${asarPath}`);
   process.exit(2);
 }
@@ -46,143 +46,119 @@ try {
   process.exit(2);
 }
 
-const read = (name) => asar.extractFile(asarPath, name).toString('utf8');
 const problems = [];
 const notes = [];
 
-// 断言片段存在，并可要求出现次数。
-function present(file, text, fragment, min = 1, max = Infinity) {
-  const count = text.split(fragment).length - 1;
-  if (count < min) {
-    problems.push(`${file} 缺少定制片段（出现 ${count} 次，至少需要 ${min} 次）：${JSON.stringify(fragment)}`);
-  } else if (count > max) {
-    problems.push(`${file} 定制片段出现次数过多（出现 ${count} 次，最多 ${max} 次）：${JSON.stringify(fragment)}`);
+// 这些字符串只应存在于外层与注入脚本中。asar 内出现任意一个，
+// 说明拿到的不是官方发布版，或替换时误用了此前的定制产物。
+//
+// 注意：`--frame-right-space` 虽然也是本项目会设置的 CSS 变量，但官方
+// app.css 里本就有 4 处同名声明，因此不能作为判据。
+const CUSTOM_MARKERS = [
+  'hcs-login', 'hcs-get-status', 'hcs-sync-all', 'hcs-set-auto-sync',
+  'huawei-cloud-sync', 'HcsSettingsTab', '华为云同步',
+  'OHsidian', 'qtray', 'exit-to-tray', 'force-quit',
+  '[HMOS-FRAME]',
+  'harmonyos-sync-bridge', 'HmosSyncBridge',
+  '退出软件', '贡献作者',
+  'HarmonyOS-{{version}}',
+  'if(false&&',
+];
+
+// 官方原图是 29937 字节；仓库带的自定义图标是 1606146 字节。
+const OFFICIAL_ICON_SIZE = 29937;
+
+const buf = fs.readFileSync(asarPath);
+
+// 在字节层面搜索，避免为每个标记重复构造整个文件的字符串。
+function countOccurrences(haystack, needle) {
+  const target = Buffer.from(needle, 'utf8');
+  let count = 0;
+  let from = 0;
+  for (;;) {
+    const at = haystack.indexOf(target, from);
+    if (at === -1) return count;
+    count += 1;
+    from = at + 1;
   }
 }
 
-// 断言片段不存在。
-function absent(file, text, fragment, label) {
-  const count = text.split(fragment).length - 1;
+// ---- 定制字符串不得残留 ----
+for (const marker of CUSTOM_MARKERS) {
+  const count = countOccurrences(buf, marker);
   if (count !== 0) {
-    problems.push(`${file} 残留了应当被替换的内容（${count} 处）${label ? `：${label}` : ''}：${JSON.stringify(fragment)}`);
+    problems.push(`asar 内出现定制字符串 ${count} 次：${JSON.stringify(marker)}`);
   }
 }
 
-const main = read('main.js');
-const app = read('app.js');
-const starter = read('starter.js');
-const css = read('app.css');
-const i18n = read('i18n.js');
-const zh = read('i18n/zh.txt');
-const pkg = JSON.parse(read('package.json'));
+// ---- 版本与文件清单 ----
+let files = [];
+try {
+  files = asar.listPackage(asarPath);
+} catch (e) {
+  problems.push(`无法列出 asar 内容：${e.message}`);
+}
+
+const topLevel = files.filter((f) => f.split('/').length === 2);
+for (const expected of ['/main.js', '/app.js', '/package.json', '/index.html', '/starter.html', '/help.html']) {
+  if (!topLevel.includes(expected)) {
+    problems.push(`缺少官方文件：${expected}`);
+  }
+}
+
+for (const unexpected of ['/tray.png', '/icon.png.bak', '/harmonyos-sync-bridge.js']) {
+  if (topLevel.includes(unexpected)) {
+    problems.push(`出现非官方文件：${unexpected}`);
+  }
+}
 
 // ---- package.json ----
-if (targetVersion && pkg.version !== targetVersion) {
-  problems.push(`package.json 版本为 ${pkg.version}，预期 ${targetVersion}`);
-}
-if (pkg.author !== 'OHsidian') {
-  problems.push(`package.json 的 author 为 ${JSON.stringify(pkg.author)}，预期 "OHsidian"`);
-}
-if (pkg.description !== 'OHsidian HarmonyOS Edition') {
-  problems.push(`package.json 的 description 为 ${JSON.stringify(pkg.description)}，预期 "OHsidian HarmonyOS Edition"`);
-}
-
-// ---- main.js ----
-present('main.js', main, 'if(false&&', 1, 1);
-// 短路前的写法形如 if(<标识符><18)，其中标识符逐版重排，用正则匹配。
-if (/if\((?!false&&)[A-Za-z_$][\w$]*<18\)/.test(main)) {
-  problems.push('main.js 的版本下限检查未被短路，仍存在 if(<标识符><18) 形式的判断');
-}
-present('main.js', main, 'tray.png', 1, 1);
-present('main.js', main, '"exit-to-tray"', 1, 1);
-present('main.js', main, '"force-quit"', 1, 1);
-present('main.js', main, 'qtray', 2);
-present('main.js', main, 'Ee_tray', 2);
-present('main.js', main, 'before-quit', 1);
-for (const ch of [
-  'hcs-get-status', 'hcs-sync-all', 'hcs-get-auto-sync', 'hcs-set-auto-sync',
-  'hcs-get-excluded', 'hcs-set-excluded', 'hcs-get-userid', 'hcs-set-userid',
-  'hcs-login', 'hcs-restore-list', 'hcs-restore-file', 'hcs-code',
-]) {
-  present('main.js', main, `"${ch}"`, 1, 1);
-}
-// 重复前缀意味着替换时吃掉了或留下了模块前缀，运行时会读不到 ipcMain。
-for (const dup of ['l.l.', 'm.m.', 'C.C.']) {
-  absent('main.js', main, dup, '模块前缀重复');
-}
-
-// ---- app.js ----
-present('app.js', app, '[HMOS-FRAME]', 1, 1);
-// 同一段补丁里先判函数类型再调用，因此这个字符串出现 2 次。
-present('app.js', app, 'setWindowButtonVisibility', 2, 2);
-present('app.js', app, '--frame-right-space', 1, 1);
-present('app.js', app, 'huawei-cloud-sync', 1, 1);
-present('app.js', app, 'HcsSettingsTab', 2, 2);
-present('app.js', app, '华为云同步', 1);
-present('app.js', app, 'addSettingTab(new HcsSettingsTab', 1, 1);
-present('app.js', app, '退出软件', 1);
-present('app.js', app, 'exit-to-tray', 1);
-// 设置页基类没有 update() 时，模板会附加 display() 分支。两种形态都合法，
-// 这里只确认至少有一种刷新路径可用。
-if (!app.includes('getSettingDefinitions')) {
-  problems.push('app.js 里没有 getSettingDefinitions，设置页框架与预期不符');
-}
-
-// ---- starter.js ----
-present('starter.js', starter, 'OHsidian', 1);
-absent('starter.js', starter, 'window.close()', '打开仓库后仍会关窗');
-present('starter.js', starter, 'titlebar-text', 1);
-
-// ---- app.css ----
-present('app.css', css, 'padding-top: 30px', 1);
-if (!/\.starter \.titlebar[^{]*\{[^}]*display:\s*none/.test(css)) {
-  problems.push('app.css 里没有隐藏 starter 标题栏的规则');
-}
-
-// ---- i18n ----
-present('i18n.js', i18n, 'HarmonyOS-{{version}}', 1, 1);
-present('i18n.js', i18n, 'HarmonyOS Port {{version}}', 1, 1);
-present('i18n.js', i18n, 'Updates are disabled. Running on HarmonyOS.', 1, 1);
-present('i18n.js', i18n, 'Updates not available', 1);
-present('i18n/zh.txt', zh, 'HarmonyOS 移植版本 {{version}}', 1);
-present('i18n/zh.txt', zh, 'HarmonyOS 移植版不支持自动更新。', 1);
-
-// ---- 文件齐全 ----
-const files = asar.listPackage(asarPath).map((p) => p.replace(/^\//, ''));
-for (const name of ['icon.png', 'tray.png', 'index.html', 'starter.html', 'help.html']) {
-  if (!files.includes(name)) {
-    problems.push(`产物缺少文件：${name}`);
-  }
-}
-for (const name of ['harmonyos-sync-bridge.js', 'icon.png.bak']) {
-  if (files.includes(name)) {
-    notes.push(`产物仍带有 ${name}，构建脚本按设计应移除它`);
-  }
-}
-for (const name of ['index.html', 'starter.html', 'help.html']) {
-  const html = read(name);
-  if (!html.includes('<title>OHsidian</title>')) {
-    problems.push(`${name} 的标题没有改成 OHsidian`);
+if (files.includes('/package.json')) {
+  try {
+    const pkg = JSON.parse(asar.extractFile(asarPath, 'package.json').toString('utf8'));
+    notes.push(`asar 内 package.json：name=${pkg.name} version=${pkg.version} author=${pkg.author}`);
+    if (targetVersion && pkg.version !== targetVersion) {
+      problems.push(`asar 内 package.json 的版本为 ${pkg.version}，预期 ${targetVersion}`);
+    }
+    if (pkg.author !== 'Obsidian') {
+      problems.push(`asar 内 package.json 的 author 为 ${JSON.stringify(pkg.author)}，官方原版应为 "Obsidian"`);
+    }
+  } catch (e) {
+    problems.push(`无法解析 asar 内的 package.json：${e.message}`);
   }
 }
 
-// ---- 体积 ----
-const size = fs.statSync(asarPath).size;
-notes.push(`产物体积：${size} 字节`);
-if (size < 20 * 1024 * 1024 || size > 40 * 1024 * 1024) {
-  notes.push('体积超出常见范围（20–40 MB）。确认输入的是官方发布版 asar。安装包内的 app.asar 是外层加载器，体积远小于此');
+// ---- icon.png ----
+if (files.includes('/icon.png')) {
+  try {
+    const icon = asar.extractFile(asarPath, 'icon.png');
+    notes.push(`asar 内 icon.png：${icon.length} 字节`);
+    if (icon.length !== OFFICIAL_ICON_SIZE) {
+      problems.push(`asar 内 icon.png 为 ${icon.length} 字节，官方原版为 ${OFFICIAL_ICON_SIZE} 字节`);
+    }
+  } catch (e) {
+    problems.push(`无法读取 asar 内的 icon.png：${e.message}`);
+  }
 }
 
-console.log(`检查产物：${asarPath}`);
+// ---- 报告 ----
+console.log(`文件：${asarPath}`);
+console.log(`体积：${buf.length} 字节`);
 console.log(`文件数：${files.length}`);
-for (const n of notes) console.log(`  · ${n}`);
+for (const note of notes) {
+  console.log(note);
+}
+console.log('');
 
 if (problems.length > 0) {
-  console.log('');
-  console.log(`发现 ${problems.length} 个问题：`);
-  for (const p of problems) console.log(`  - ${p}`);
+  console.error(`发现 ${problems.length} 个问题：`);
+  for (const p of problems) {
+    console.error(`  - ${p}`);
+  }
+  console.error('');
+  console.error('asar 应为官方发布版原样。若确认已替换，请核对来源与 md5。');
   process.exit(1);
 }
 
-console.log('');
-console.log('全部定制点检查通过。');
+console.log('asar 是官方发布版原样，未发现定制残留。');
+process.exit(0);
