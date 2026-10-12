@@ -367,6 +367,32 @@ c.createDiv({cls:"titlebar-button mod-close",    onclick: ... e.close()    ...})
 
 隐藏动作放在 `frame` 取值判定之后。`frame=native` 时官方不创建自绘标题栏（该处是 `"native"!==t&&(e.frameDom=new OI(...))`），无可隐藏。
 
+#### 右侧避让空间与隐藏动作的关联
+
+隐藏这三个按钮后要同时保证右侧避让空间还在。避让来自官方 `app.css`：
+
+```css
+.is-hidden-frameless:not(.is-fullscreen) .workspace-tabs.mod-top-right-space .workspace-tab-header-container {
+  padding-right: calc(var(--size-4-2) + var(--frame-right-space));
+}
+```
+
+`--frame-right-space` 官方只在两个平台类下声明：
+
+```css
+.mod-windows,
+.mod-linux {
+  --frame-left-space: 0px;
+  --frame-right-space: 126px;
+}
+```
+
+平台类由 `Gp()` 判定：`win32` → `win`，`darwin` → `mac`，`linux` → `linux`，其余非空值 → `unknown`。本机平台不是这三个之一，因此 `body` 上不会出现任何 `mod-*` 类，这个变量没有声明处，只能由注入在 `body` 上设置。
+
+**设置这一句不得依赖 `electron.remote`。** 它只改一个 CSS 变量，而注入的执行时机可能早于官方把 `electron.remote` 挂到 `window`。它必须排在取 `remote` 之前。曾有一版把它排在 `remote` 判定之后，`remote` 未就绪时被一并跳过，笔记页面右上角的 tab 区域叠到了系统按钮下面。
+
+系统按钮的可见性（`setWindowButtonVisibility`）需要 `remote`，取不到时跳过无妨，因为窗口的 `frame` 取值由外层运行时决定。这两件事的失败后果不同，因此分开处理，不共用一个提前返回。
+
 ## 4. app.js 的定制
 
 ### 4.1 `HcsSettingsTab` 类定义

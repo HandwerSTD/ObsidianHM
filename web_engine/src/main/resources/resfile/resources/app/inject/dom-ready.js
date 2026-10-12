@@ -101,19 +101,38 @@
       }
       // 无边框窗口上系统的三个按钮与官方自绘的三个重合，先隐藏自绘的那份。
       hideSelfDrawnWindowButtons();
-      var electron = electronApi();
-      if (!electron || !electron.remote) {
-        log('窗口按钮调整跳过：electron.remote 不可用');
-        return;
-      }
-      var win = electron.remote.getCurrentWindow();
-      var hasSetter = !!(win && typeof win.setWindowButtonVisibility === 'function');
-      if (hasSetter) {
-        win.setWindowButtonVisibility(frameStyle === 'hidden');
-      }
+      // 为系统按钮在右侧留出空间。
+      //
+      // 官方 CSS 里这段空间由两个变量算出：
+      //   .is-hidden-frameless:not(.is-fullscreen) .workspace-tabs.mod-top-right-space
+      //     .workspace-tab-header-container { padding-right: calc(var(--size-4-2) + var(--frame-right-space)); }
+      // 官方只在 .mod-windows、.mod-linux 两个类下定义 --frame-right-space: 126px，
+      // 而本机平台不是 win32 / darwin / linux，官方不给 body 加任何 mod-* 类，
+      // 因此这个变量只能由这里在 body 上设置。
+      //
+      // 这一句只改一个 CSS 变量，不依赖 remote，必须放在下面取 remote 之前。
+      // 之前它排在 remote 判定之后，remote 取不到时被一并跳过，
+      // 笔记页面右上角的 tab 区域就叠到了系统按钮下面。
       document.body.style.setProperty('--frame-right-space', '126px');
-      log('窗口按钮与右边距已调整，frame=' + frameStyle +
-        ' setWindowButtonVisibility=' + hasSetter +
+      var remoteNote;
+      try {
+        var electron = electronApi();
+        if (electron && electron.remote) {
+          var win = electron.remote.getCurrentWindow();
+          var hasSetter = !!(win && typeof win.setWindowButtonVisibility === 'function');
+          if (hasSetter) {
+            win.setWindowButtonVisibility(frameStyle === 'hidden');
+          }
+          remoteNote = 'setWindowButtonVisibility=' + hasSetter;
+        } else {
+          // 注入可能在官方把 electron.remote 挂到 window 之前执行。
+          // 系统按钮的可见性由外层运行时决定，这里只是补一次设置。
+          remoteNote = 'setWindowButtonVisibility=跳过，remote 未就绪';
+        }
+      } catch (e) {
+        remoteNote = 'setWindowButtonVisibility=失败 ' + (e && e.message ? e.message : e);
+      }
+      log('窗口按钮与右边距已调整，frame=' + frameStyle + ' ' + remoteNote +
         ' --frame-right-space=' + document.body.style.getPropertyValue('--frame-right-space'));
     } catch (e) {
       log('窗口按钮调整失败 ' + (e && e.message ? e.message : e));

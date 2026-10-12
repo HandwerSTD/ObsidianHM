@@ -111,6 +111,37 @@ asar 加载失败，或注入脚本抛错。两者的判据不同：
 
 注意只针对 `mod-right` 容器：左端的菜单按钮在 `.mod-left` 里。官方的 `.mod-linux .titlebar-button` 规则把 `display` 设为 `flex`，所以隐藏用的样式需要 `!important`。
 
+### 笔记页面右上角的 tab 区域不避让系统按钮
+
+日志：
+
+```
+[INJECT] 自绘窗口按钮已隐藏
+[INJECT] 窗口按钮调整跳过：electron.remote 不可用
+```
+
+第二行说明 `applyFrameAdjustments` 在取 `remote` 失败时提前返回了，把 `document.body.style.setProperty('--frame-right-space', '126px')` 一并跳过。
+
+该变量是右侧避让空间的来源：
+
+```css
+.is-hidden-frameless:not(.is-fullscreen) .workspace-tabs.mod-top-right-space .workspace-tab-header-container {
+  padding-right: calc(var(--size-4-2) + var(--frame-right-space));
+}
+```
+
+官方只在 `.mod-windows, .mod-linux` 下声明它，而设备平台不是 win32 / darwin / linux，官方不给 `body` 加任何 `mod-*` 类，因此它只能由注入设置。
+
+处置：确认设置该变量的那一句排在取 `remote` 之前。它不依赖 `remote`。
+
+当前正常输出是：
+
+```
+[INJECT] 窗口按钮与右边距已调整，frame=hidden setWindowButtonVisibility=true --frame-right-space=126px
+```
+
+`setWindowButtonVisibility` 为 `跳过，remote 未就绪` 也算正常，窗口的 `frame` 取值由外层运行时决定。只要结尾的 `--frame-right-space=126px` 在，避让就是生效的。
+
 ### 起始窗口打开仓库后不关闭
 
 `window.close` 被某个注入脚本覆盖了。覆盖会作用于每个渲染进程，连带破坏三处：起始窗口不关闭、「切换仓库」命令走不完、设置弹窗关不掉。
