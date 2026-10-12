@@ -173,12 +173,12 @@ app.on("activate", () => { be = !1; BrowserWindow.getAllWindows().length === 0 &
 | 「贡献作者」条目 | 运行时注入 |
 | 「商用许可证」项隐藏 | 运行时注入（新增，详见 4.6） |
 | 「华为云同步」侧栏入口隐藏 | 运行时注入（新增，详见 4.9） |
-| 标题栏文字 `OHsidian` | 运行时注入 |
+| 标题栏文字 | 不处理，采用官方文字 |
 | 5 处 `window.close()` | 不处理，保留官方行为。详见 5.2 |
 | i18n 的 7 个键 | 运行时注入 |
 | `i18n/zh.txt` 的 4 块 | 运行时注入 |
 | app.css 的 3 处 | 运行时注入 |
-| 三个 HTML 的标题 | 运行时注入 |
+| 三个 HTML 的标题 | 不处理，采用官方文字 |
 | installer 版本比较对象 `xie` | 运行时注入 |
 | help 窗口复用 starter 窗口 | 放弃，采用官方行为 |
 | starter 窗口复用为仓库窗口 | 放弃，采用官方行为 |
@@ -509,11 +509,11 @@ var pf=uf,df=hf;
 
 ### 5.1 标题栏文字
 
-**决策：运行时注入。**
+**决策：不处理，采用官方文字。**
 
-官方写法是 `this.titleBarTextEl=l.createDiv({cls:"titlebar-text",text:"Obsidian"})`。注入脚本在 `dom-ready` 后改写该元素的文本。
+官方写法是 `this.titleBarTextEl=l.createDiv({cls:"titlebar-text",text:"Obsidian"})`，界面上一律显示 `Obsidian`。
 
-值得注意的是，1.12.7 与 1.13.4 的 `app.css` 里都有 `.starter .titlebar-inner .titlebar-text { display: none; }`，即这个元素本来就不显示；`prototype.updateTitle=function(){this.titleBarTextEl.setText(this.win.document.title)}` 又会用文档标题覆盖它的文本。这项改动属于跟随 upstream 的完整替换，不是当前界面可见性的决定因素。
+1.12.7 与 1.13.4 的 `app.css` 里都有 `.starter .titlebar-inner .titlebar-text { display: none; }`，即这个元素本来就不显示；`prototype.updateTitle=function(){this.titleBarTextEl.setText(this.win.document.title)}` 又会用文档标题覆盖它的文本。
 
 ### 5.2 五处 `window.close()`
 
@@ -533,7 +533,9 @@ var pf=uf,df=hf;
 
 **决策：放弃，采用官方行为。**
 
-仓库版本把起始窗口品牌区的两段内联 SVG 换成 `icon.png` 图片与 `OHsidian` 文本。属于 DOM 结构替换，也属于品牌层面的改写，不再保留。
+仓库版本把起始窗口品牌区的两段内联 SVG 换成 `icon.png` 图片与自己的项目名称。属于 DOM 结构替换，也属于品牌层面的改写，不再保留。
+
+起始窗口的标题栏文字与三个 HTML 的文档标题同样不再改写，界面上一律采用官方的 `Obsidian`。对应地，`inject/dom-ready.js` 里的 `applyTitlebarText()` 与 `applyDocumentTitle()` 已删除。
 
 ## 6. 文案与样式
 
@@ -627,11 +629,11 @@ i18next.t = function (key, opts) {
 
 ### 6.4 三个 HTML 的标题
 
-**决策：运行时注入。**
+**决策：不处理，采用官方标题。**
 
-`document.title` 可在 `dom-ready` 时改写。HTML 里的 `<title>` 只影响首屏，注入一个处理即可覆盖。
+`index.html`、`starter.html`、`help.html` 的 `<title>` 保留为官方的 `Obsidian`。
 
-对应地，`patchHtmlTitles()` 可以从构建脚本中删除，`index.html`、`starter.html`、`help.html` 三个文件不再需要改动。
+早期路线曾在 `dom-ready` 时改写 `document.title`，该处理已删除。`patchHtmlTitles()` 也已从构建脚本中删除，三个文件不再需要改动。
 
 ## 7. 文件与资源
 

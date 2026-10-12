@@ -149,6 +149,12 @@ Uncaught
 
 **进程存在不等于界面正常。** 判据是 `obsidian.log` 有新记录。设备上的 `console.log` 既不进这个文件，也不出现在 hilog 里，只有 `log()` 与注入脚本经 `ohsidian-log` 通道转写的行会写盘。
 
-## 四、构建期打补丁路线的判据（已停用）
+## 四、符号定位的判据
 
-`tools/build-asar.mjs` 是构建期打补丁的实现，改为运行时注入后不再参与构建。若日后需要把某项定制改回补丁，其产物校验方式见 `docs/asar-upgrade.md` 第 7 节，校验脚本为 `scripts/verify-asar.mjs`（当前它的判断依据是「定制是否施加到产物」，与本文件的 asar 纯净度检查方向相反）。
+替换 asar 后先跑一遍定位，确认注入点没有漂移：
+
+```bash
+cd tools && node resolve-symbols.mjs --asar web_engine/src/main/resources/resfile/resources/app/obsidian.asar
+```
+
+判定依据是输出末行的「全部符号判定唯一」。任一符号判定不唯一时以非零退出并打印全部候选，此时人工确认新结构。

@@ -1,6 +1,6 @@
 ---
 name: obsidian-asar-upgrade
-description: 升级 OHsidian 内置的 Obsidian 内核版本（升级 asar、跟随官方新版本、换 Obsidian 版本、asar 升级、托盘或华为云同步设置页缺失、设置页白屏、remote is disabled 报错）。项目使用官方发布版 asar 原样、定制由外层运行时注入施加，本技能说明替换 asar 后要复核哪些注入点，以及如何在设备上验证。
+description: 升级 ObsidianHM 内置的 Obsidian 内核版本（升级 asar、跟随官方新版本、换 Obsidian 版本、asar 升级、托盘或华为云同步设置页缺失、设置页白屏、remote is disabled 报错）。项目使用官方发布版 asar 原样、定制由外层运行时注入施加，本技能说明替换 asar 后要复核哪些注入点，以及如何在设备上验证。
 ---
 
 # Obsidian 内核升级
@@ -10,7 +10,7 @@ description: 升级 OHsidian 内置的 Obsidian 内核版本（升级 asar、跟
 - 官方内部机制（通道、全局、i18n 取词、设置页、标题栏、版本号、平台差异）：`docs/obsidian-internals.md`
 - 归属判定与最终状态：`docs/asar-customization-runtime.md`
 - 实测记录：`docs/runtime-inject-verification.md`
-- 升级过程积累的官方两版差异：`docs/asar-upgrade.md`（第 3、4 节仍有参考价值；第 5 节起的构建脚本说明对应的是已停用的构建期打补丁路线，构建脚本在 `tools/`）
+- 升级过程积累的官方两版差异与旧定制清单：`docs/asar-upgrade.md`
 
 ## 先做这件事
 
@@ -147,9 +147,15 @@ hdc shell "tail -n 60 /data/app/el2/100/base/com.mikannqaq.obsidian/files/obsidi
 
 日志时间戳是 UTC，北京时间是 UTC+8。
 
-## 已停用的路线
+## 符号定位
 
-`tools/build-asar.mjs` 与 `tools/lib/` 是构建期打补丁的实现，改为运行时注入后不再参与构建，保留作参考。若日后需要把某项定制改回补丁（例如窗口复用这类外层拿不到等价接口的改动），可以复用那里的符号解析机制。构建脚本与补丁清单的说明见 `docs/asar-upgrade.md` 第 5 节。
+替换 asar 前先跑一遍符号定位，确认注入点没有漂移：
+
+```bash
+cd tools && node resolve-symbols.mjs --asar <新的官方 asar>
+```
+
+脚本读取 `main.js` 与 `app.js`，打印全部符号。1.13.4 的输出共 39 项（`electron` 为 `l`、设置页基类为 `i6`、设置项容器为 `_b`、提示消息类为 `xw`、标题栏类为 `OI`）。任一符号判定不唯一时以非零退出并打印全部候选，此时人工确认新结构并更新 `tools/lib/` 里的形状描述。详细说明见 `tools/README.md`。
 
 ## 参考文件
 

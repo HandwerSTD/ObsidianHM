@@ -1,30 +1,30 @@
-# OHSidian 项目约定
+# ObsidianHM 项目约定
 
 本文件是仓库级的作业约定。全局约定见 `~/.pi/agent/AGENTS.md`，两者都适用。
 
 ## 1. 项目定位
 
-OHSidian 是 Obsidian 桌面版的 HarmonyOS 移植。做法是把官方发布版 Electron 应用装进鸿蒙的 Electron 运行时，再由外层引导脚本补齐平台差异。
+ObsidianHM 是 Obsidian 桌面版的 HarmonyOS 移植。做法是把官方发布版 Electron 应用装进鸿蒙的 Electron 运行时，再由外层引导脚本补齐平台差异。
 
 两层结构：
 
-| 目录 | 内容 |
-|------|------|
-| `web_engine/` | HAR 静态库。ArkTS 侧的适配层（JSBind 绑定、云同步适配器、文件系统、窗口管理），以及 `src/main/resources/resfile/resources/app/` 下的 Electron 应用目录 |
-| `electron/` | HAP 入口包。`EntryAbility`、Deeplink 处理、依赖 `web_engine` |
+| 目录          | 内容                                                                                                            |
+| ----------- | ------------------------------------------------------------------------------------------------------------- |
+| web_engine/ | HAR 静态库。ArkTS 侧的适配层（JSBind 绑定、云同步适配器、文件系统、窗口管理），以及 src/main/resources/resfile/resources/app/ 下的 Electron 应用目录 |
+| electron/   | HAP 入口包。EntryAbility、Deeplink 处理、依赖 web_engine                                                                |
 
 `web_engine/src/main/resources/resfile/resources/app/` 下的内容是这个项目的核心：
 
-| 文件 | 说明 |
-|------|------|
-| `obsidian.asar` | 官方发布版内核，逐字节原样 |
-| `main.js` | 外层引导脚本，全部定制在这里 |
-| `inject/preload.js` | 注入渲染进程最早的时机，包装 i18next |
-| `inject/dom-ready.js` | 页面就绪后注入，设置页、标题栏、窗口按钮 |
-| `inject/hcs-channels.js` | 十二个 `hcs-*` 通道的处理函数 |
-| `tray.png` | 托盘图标 |
-| `package.json` | 外层清单，`version` 必须与内核版本一致 |
-| `node_modules/` | asar 运行需要的依赖，被 gitignore 单独排除保留 |
+| 文件                     | 说明                              |
+| ---------------------- | ------------------------------- |
+| obsidian.asar          | 官方发布版内核，逐字节原样                   |
+| main.js                | 外层引导脚本，全部定制在这里                  |
+| inject/preload.js      | 注入渲染进程最早的时机，包装 i18next          |
+| inject/dom-ready.js    | 页面就绪后注入，设置页、窗口按钮、起始窗口样式        |
+| inject/hcs-channels.js | 十二个 hcs-* 通道的处理函数               |
+| tray.png               | 托盘图标                            |
+| package.json           | 外层清单，version 必须与内核版本一致          |
+| node_modules/          | asar 运行需要的依赖，被 gitignore 单独排除保留 |
 
 ## 2. 最高原则：以官方行为为准
 
@@ -48,7 +48,7 @@ node .agents/skills/obsidian-asar-upgrade/scripts/verify-asar.mjs \
 
 1.13.4 的基准：25783388 字节，md5 `bbae59d36fe60500436a82cb841d5ad6`，380 个文件。
 
-**禁止用构建期打补丁的方式修改 asar。** `tools/` 下的构建脚本是早期路线的遗留，不再参与构建。
+**禁止用构建期打补丁的方式修改 asar。** `tools/` 下只保留符号定位工具，不产出 asar。
 
 ## 3. 三条注入设计约束
 
@@ -105,12 +105,12 @@ devecocli run --skip-build --device 127.0.0.1:42021
 
 **不要提交以下内容**，它们要么是本地产物，要么已经被 gitignore：
 
-| 路径 | 原因 |
-|------|------|
-| `web_engine/BuildProfile.ets` 的改动 | 构建副作用 |
-| `.bitfun/`、`.pi/` | 本地工具目录 |
-| `build-profile.json5` | 含签名凭据，已 gitignore |
-| `tools/node_modules/`、`oh_modules/` | 依赖目录 |
+| 路径                              | 原因                |
+| ------------------------------- | ----------------- |
+| web_engine/BuildProfile.ets 的改动 | 构建副作用             |
+| .bitfun/、.pi/                   | 本地工具目录            |
+| build-profile.json5             | 含签名凭据，已 gitignore |
+| tools/node_modules/、oh_modules/ | 依赖目录              |
 
 `web_engine/src/main/resources/resfile/resources/app/node_modules/` 是例外，它被跟踪（35 个文件，内容是 `@electron/remote`）。`main.js` 运行时要加载它，因此必须随包发布。改依赖时注意这一点。
 
@@ -122,14 +122,14 @@ devecocli run --skip-build --device 127.0.0.1:42021
 
 改动前先查这几份，避免重复推导或与既有结论冲突。
 
-| 文档 | 内容 |
-|------|------|
-| `docs/obsidian-internals.md` | 官方内部机制：44 个通道、全局对象、i18n 取词、设置页结构、标题栏、版本号、平台差异、读压缩代码的方式 |
-| `docs/asar-customization-runtime.md` | 每一项定制的归属判定与依据 |
-| `docs/runtime-inject-verification.md` | 设备实测记录 |
-| `docs/asar-upgrade.md` | 构建期打补丁路线（已停用）。第 3、4 节记录官方两版差异与 1.12.7 的定制清单，仍有参考价值 |
-| `.agents/skills/obsidian-asar-upgrade/SKILL.md` | 升级内核的完整流程，含注入点与官方接口的对照表 |
-| `tools/README.md` | 已停用的构建脚本说明 |
+| 文档                                            | 内容                                                     |
+| --------------------------------------------- | ------------------------------------------------------ |
+| docs/obsidian-internals.md                    | 官方内部机制：44 个通道、全局对象、i18n 取词、设置页结构、标题栏、版本号、平台差异、读压缩代码的方式 |
+| docs/asar-customization-runtime.md            | 每一项定制的归属判定与依据                                          |
+| docs/runtime-inject-verification.md           | 设备实测记录                                                 |
+| docs/asar-upgrade.md                          | 构建期打补丁路线（已停用）。第 3、4 节记录官方两版差异与 1.12.7 的定制清单，仍有参考价值     |
+| .agents/skills/obsidian-asar-upgrade/SKILL.md | 升级内核的完整流程，含注入点与官方接口的对照表                                |
+| tools/README.md                               | 符号定位工具的说明                                        |
 
 改代码发现文档有错时，直接改正。不要保留「原先写的 X 是错的，现在改成 Y」这类痕迹。
 
@@ -141,7 +141,7 @@ devecocli run --skip-build --device 127.0.0.1:42021
 
 **不要用程序化方式修改仓库里的代码。** 禁止 heredoc、Python 脚本、`sed`、`perl` 改文件。用编辑工具手工改。
 
-**不要用 Git 回滚代码。** 用户说的「回滚」指用编辑工具把代码恢复到上一个状态。禁止 `git checkout`、`git reset --hard`、`git revert` 丢弃改动。
+**不要用 Git 回滚代码。** 用户说的「回滚」指用编辑工具把代码恢复到上一个状态。除非授权或明确要求，禁止 `git checkout`、`git reset --hard`、`git revert` 丢弃改动。
 
 **禁止读写 `/tmp`。** 需要中间结果时写到 `~/.tmp/`。
 

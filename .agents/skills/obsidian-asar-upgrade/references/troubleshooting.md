@@ -187,6 +187,12 @@ bundle 目录不对普通 shell 开放。要核对 asar，用仓库里的那份�
 
 `devecocli build` 会把 `web_engine/BuildProfile.ets` 改成 `BUILD_MODE_NAME = 'debug'` 与 `DEBUG = true`。发布前需要恢复为 `release` 与 `false`。这个文件的改动属于构建产生的副作用，不要提交。
 
-## 四、构建期打补丁路线（已停用）
+## 四、符号定位失败
 
-`tools/build-asar.mjs` 的报错对应已停用的路线。其报错格式是「补丁 id + 实际命中次数 + 候选列表」，处置是更新 `tools/build-asar.mjs` 里的定位标记或 `tools/lib/` 里的符号解析形状描述。完整说明见 `docs/asar-upgrade.md` 第 5 节。
+替换 asar 前先跑一遍符号定位：
+
+```bash
+cd tools && node resolve-symbols.mjs --asar <新的官方 asar>
+```
+
+报错格式是「文件名 + 未能解析出的角色」。出现多个候选时按打分排序并打印全部候选。处置是打开 `tools/lib/main-symbols.mjs` 或 `tools/lib/symbols.mjs` 里对应的定位函数，按新版结构更新形状描述。完整说明见 `tools/README.md`。

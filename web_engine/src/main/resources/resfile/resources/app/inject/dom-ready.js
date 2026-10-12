@@ -140,26 +140,7 @@
   }
 
   // ---------------------------------------------------------------
-  // 2. 起始窗口的标题栏文字。官方写的是 Obsidian，这里改为 OHsidian。
-  // ---------------------------------------------------------------
-  function applyTitlebarText() {
-    try {
-      var texts = document.querySelectorAll('.titlebar-text');
-      var changed = 0;
-      for (var i = 0; i < texts.length; i++) {
-        if (texts[i].textContent === 'Obsidian') {
-          texts[i].textContent = 'OHsidian';
-          changed += 1;
-        }
-      }
-      if (changed > 0) log('标题栏文字已改写 ' + changed + ' 处');
-    } catch (e) {
-      log('标题栏文字改写失败 ' + (e && e.message ? e.message : e));
-    }
-  }
-
-  // ---------------------------------------------------------------
-  // 3. 「华为云同步」设置页。
+  // 2. 「华为云同步」设置页。
   //
   // 页面仍然注册并保持可用，但侧栏入口隐藏。
   //
@@ -403,7 +384,7 @@
   }
 
   // ---------------------------------------------------------------
-  // 4. 包装「外观」页与「关于」页的 getSettingDefinitions。
+  // 3. 包装「外观」页与「关于」页的 getSettingDefinitions。
   //
   // 两页的定位按 id 判定（appearance、about），不依赖压缩后的类名。
   // 包装后调一次 update()：设置项在构造期间已缓存，不刷新看不到变化。
@@ -587,15 +568,8 @@
   }, 100);
 
   // ---------------------------------------------------------------
-  // 5. 文档标题与起始窗口的样式。
+  // 4. 起始窗口的样式。
   // ---------------------------------------------------------------
-  function applyDocumentTitle() {
-    try {
-      if (document.title === 'Obsidian') document.title = 'OHsidian';
-    } catch (e) {
-    }
-  }
-
   function applyStarterStyles() {
     try {
       if (!document.body) return;
@@ -618,17 +592,7 @@
   // 页面结构可能晚于 dom-ready 完成，推迟一轮再施加 DOM 相关改动。
   setTimeout(function () {
     applyFrameAdjustments();
-    applyTitlebarText();
-    applyDocumentTitle();
     applyStarterStyles();
     hideHcsTabEntry();
   }, 0);
-
-  // 标题栏文字会被官方在用文档标题覆盖，观察一段时间内的变化。
-  var titleChecks = 0;
-  var titleTimer = setInterval(function () {
-    titleChecks += 1;
-    applyTitlebarText();
-    if (titleChecks >= 20) clearInterval(titleTimer);
-  }, 500);
 })();

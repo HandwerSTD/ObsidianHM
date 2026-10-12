@@ -1,22 +1,21 @@
 <p align="center">
-  <img src="AppScope/resources/base/media/startIcon.png" alt="OHsidian Logo" width="120" />
+  <img src="AppScope/resources/base/media/startIcon.png" alt="ObsidianHM Logo" width="120" />
 </p>
 
-<h1 align="center">OHsidian</h1>
+<h1 align="center">ObsidianHM</h1>
 
 <p align="center">
   <strong>Obsidian for HarmonyOS</strong>
 </p>
 
 <p align="center">
-  Run the Obsidian note-taking experience you know and love on HarmonyOS devices — with multi-window support, one-tap Huawei Account sign-in, Huawei Cloud sync, and comprehensive native system integration.
+  Run the Obsidian note-taking experience you know and love on HarmonyOS devices — with multi-window support, one-tap Huawei Account sign-in, and comprehensive native system integration.
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/HarmonyOS-6.0.2%2822%29-blue?logo=harmonyos" alt="HarmonyOS" />
-  <img src="https://img.shields.io/badge/Obsidian-1.12.7-purple?logo=obsidian" alt="Obsidian" />
+  <img src="https://img.shields.io/badge/Obsidian-1.13.4-purple?logo=obsidian" alt="Obsidian" />
   <img src="https://img.shields.io/badge/ArkTS-API%2022-orange" alt="ArkTS" />
-  <img src="https://img.shields.io/badge/license-BSD%203--Clause-green" alt="License" />
 </p>
 
 ---
@@ -28,10 +27,11 @@
 - [Features](#features)
 - [Module Structure](#module-structure)
 - [Adapter Layer](#adapter-layer)
-- [Huawei Cloud Sync](#huawei-cloud-sync)
+- [Customization](#customization)
 - [Build & Run](#build--run)
 - [Project Structure](#project-structure)
 - [Dependencies](#dependencies)
+- [Documentation](#documentation)
 - [License](#license)
 - [Acknowledgments](#acknowledgments)
 
@@ -39,9 +39,9 @@
 
 ## Overview
 
-**OHsidian** is an unofficial port of the Obsidian note-taking application for the HarmonyOS (HongMeng) platform. Rather than reimplementing Obsidian from scratch, it wraps the original Obsidian (`obsidian.asar`) inside a complete Electron compatibility layer running atop the HarmonyOS native runtime.
+**ObsidianHM** is an unofficial port of the Obsidian note-taking application for the HarmonyOS (HongMeng) platform. It provides an Electron compatibility layer so the official release build of Obsidian (`obsidian.asar`) runs directly on the HarmonyOS native runtime.
 
-At its core, OHsidian **shims the Electron API surface using HarmonyOS native capabilities**. A C++ native library (`libadapter.so`), an ArkTS adapter layer, and a JSBind bridge work together to make Obsidian's Node.js/Electron runtime operate seamlessly on HarmonyOS. Meanwhile, deep integration with the Huawei ecosystem — Account Kit, Cloud Foundation Kit, Status Bar extensions — makes the experience feel truly native.
+At its core, ObsidianHM provides the Electron API using HarmonyOS native capabilities. A C++ native library (`libadapter.so`), an ArkTS adapter layer, and a JSBind bridge work together to make Obsidian's Node.js/Electron runtime operate on HarmonyOS.
 
 | Project Info | |
 |-------------|------|
@@ -51,398 +51,355 @@ At its core, OHsidian **shims the Electron API surface using HarmonyOS native ca
 | Target Devices | 2in1 (foldable/tablet), Tablet |
 | Language | ArkTS (TypeScript) |
 | Build System | Hvigor |
-| Obsidian Engine | 1.12.7 |
+| Obsidian Engine | 1.13.4 (`obsidian.asar`, byte-for-byte official release) |
 
 ---
 
 ## Architecture
 
-```
-┌──────────────────────────────────────────────────────┐
-│                   Obsidian 1.12.7                     │
-│                   (obsidian.asar)                     │
-├──────────────────────────────────────────────────────┤
-│             Electron API Compatibility                │
-│    ┌──────────────┐  ┌──────────────┐                │
-│    │  @electron/   │  │   Node.js    │                │
-│    │    remote     │  │   Runtime    │                │
-│    └──────┬───────┘  └──────┬───────┘                │
-├──────────┼──────────────────┼────────────────────────┤
-│          │   JSBind Bridge   │                        │
-│          ▼                  ▼                        │
-│  ┌──────────────────────────────────────┐            │
-│  │          C++ libadapter.so            │            │
-│  └──────────────────────────────────────┘            │
-├──────────────────────────────────────────────────────┤
-│            ArkTS Adapter Layer (~50 Adapters)         │
-│  CloudSync │ FileSys │ Notify │ IME │ Theme │ ...    │
-├──────────────────────────────────────────────────────┤
-│              HarmonyOS Native Runtime                 │
-│   Ability │ ArkUI │ AccountKit │ CloudFoundation     │
-└──────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+  A["Obsidian 1.13.4<br/>obsidian.asar (byte-for-byte official)"]
+  B["Outer bootstrap script<br/>app/main.js"]
+  C["Renderer injection<br/>app/inject/preload.js, dom-ready.js"]
+  D["Electron API compatibility<br/>@electron/remote + Node.js runtime"]
+  E["JSBind bridge"]
+  F["C++ native library<br/>libadapter.so"]
+  G["ArkTS adapter layer<br/>48 adapters"]
+  H["HarmonyOS native runtime<br/>Ability, ArkUI, Account Kit"]
+  A --> B
+  B --> C
+  B --> D
+  D --> E
+  E --> F
+  E --> G
+  F --> H
+  G --> H
 ```
 
-**Layer breakdown:**
+**Layers:**
 
-- **Obsidian Layer** — Stock `obsidian.asar`, unmodified Obsidian 1.12.7 application code
-- **Electron Compatibility** — `@electron/remote` provides the remote module API; `main.js` handles asar loading and update management
-- **JSBind Bridge** — Connects the JS runtime to the ArkTS native layer, forwarding Electron API calls to the appropriate adapters
-- **C++ Native Library** — `libadapter.so` provides core system-level API bindings
-- **ArkTS Adapter Layer** — ~50 adapters wrapping HarmonyOS APIs as Electron-compatible interfaces
-- **HarmonyOS Foundation** — System-native capabilities: Ability components, ArkUI, Huawei Account, Cloud Storage, etc.
+- **Obsidian layer** — `obsidian.asar`, byte-for-byte the official release. File count, size, and md5 can be verified with the script bundled in this repo, see "Customization"
+- **Outer bootstrap script** — `app/main.js`. Loads the asar and carries the version-floor short circuit, early remote enable, tray, close-to-tray, font compatibility, trash compatibility, the deeplink queue, and renderer injection
+- **Renderer injection** — `preload.js` and `dom-ready.js` under `app/inject/`, applied before page scripts run or once the page is ready
+- **Electron compatibility layer** — `@electron/remote` provides the remote module API; `libadapter.so` provides Node.js and system-level APIs
+- **JSBind bridge** — connects the JS runtime to the ArkTS native layer, forwarding Electron API calls to the matching adapter
+- **ArkTS adapter layer** — 48 adapters wrapping HarmonyOS APIs as Electron-compatible interfaces
+- **HarmonyOS foundation** — Ability components, ArkUI, Huawei Account, and other system-native capabilities
 
 ---
 
 ## Features
 
-### Core Obsidian Experience
+### Obsidian Core Experience
 
-- Full Obsidian 1.12.7 note editing and management
-- Complete compatibility with all community plugins and themes
-- Local Vault creation, management, and browsing
-- Real-time Markdown preview and editing
+- Full Obsidian 1.13.4 note editing and management
+- Full compatibility with community plugins and themes
+- Creating, managing, and browsing local Vaults
+- Live Markdown preview and editing
 - Graph view, backlinks, and other advanced features
 
 ### Multi-Window Support
 
-- Main windows, sub-windows, embedded windows, floating windows
-- Persistent window position and size memory
-- Isolated rendering processes (via `ChildProcess`)
+- Main, child, embedded, and floating windows
+- Window position and size persistence
+- Isolated renderer processes (via `ChildProcess`)
 - Status bar extension window
 
 ### Huawei Ecosystem Integration
 
 - **One-Tap Huawei Account Sign-In** — Seamless authentication via Account Kit's `LoginWithHuaweiIDButton`
-- **Huawei Cloud Sync** — Cloud backup and cross-device Vault synchronization via Cloud Foundation Kit
 - **Status Bar Extension** — Persistent system status bar presence via `StatusBarViewExtensionAbility`
 
 ### Native System Integration
 
-| Category | Adaptations |
-|----------|-------------|
-| File System | File manager, file picker, native dialogs, trash compatibility layer |
-| Input | IME framework, drag-and-drop, multi-touch |
+| Category | Coverage |
+|----------|----------|
+| File system | File manager, file picker, native dialogs, trash compatibility layer |
+| Input | IME framework, drag and drop, multi-touch |
 | Display | Multi-monitor management, dark/light theme following, custom cursors |
-| Notifications | System push notifications, screen lock event monitoring |
-| Device | Battery status, Bluetooth (Classic + BLE), power management, screenshots |
+| Notifications | System notifications, screen lock event monitoring |
+| Device | Battery status, Bluetooth (classic + BLE), power management, screen capture |
 | Security | Certificate management, biometric authentication, clipboard access |
-| Other | Print service, text-to-speech, OCR recognition, geolocation, external protocol handling |
+| Other | Printing, text-to-speech, OCR, geolocation, external protocol handling |
 
 ### Auto-Update
 
-- Detects `obsidian-{version}.asar` update packages
-- RSA-SHA256 signature verification + SHA256 hash verification
-- Hot-reloads new version after replacing the asar archive
+The HarmonyOS port disables desktop auto-update. The outer bootstrap script short-circuits the update check at startup and keeps the toggle on the About page disabled through the `disable-update` channel. The download and verification logic (RSA-SHA256 signature, SHA256 hash) remains in `app/main.js` and is currently unreachable.
 
 ---
 
 ## Module Structure
 
-The project follows the standard HarmonyOS dual-module architecture:
+The project uses the standard two-module HarmonyOS layout:
 
-### `web_engine` (HAR Static Library)
+### `web_engine` (HAR static library)
 
-The core engine module providing all Electron compatibility functionality and adapters. Can be reused by other HarmonyOS applications.
+The core engine module, providing all Electron compatibility features and the adapter layer.
 
 ```typescript
 // Public exports (Index.ets)
-export { WebAbilityStage } from './src/main/ets/application/AbilityStage'
-export { WebAbility } from './src/main/ets/ability/WebAbility'
-export { WebEmbeddedAbility } from './src/main/ets/ability/WebEmbeddedAbility'
-export { WebWindow, WebSubWindow, WebEmbeddedWindow, WebWindowNode } from './src/main/ets/components/...'
-export { WebChildProcess } from './src/main/ets/process/WebChildProcess'
+export { WebAbilityStage } from './src/main/ets/application/WebAbilityStage';
+export { WebAbility } from './src/main/ets/ability/WebAbility';
+export { WebEmbeddedAbility } from './src/main/ets/ability/WebEmbeddedAbility';
+export { WebWindow } from './src/main/ets/components/WebWindow';
+export { WebSubWindow } from './src/main/ets/components/WebSubWindow';
+export { WebEmbeddedWindow } from './src/main/ets/components/WebEmbeddedWindow';
+export { WebWindowNode } from './src/main/ets/components/WebWindowNode';
+export { ILoginInfo } from './src/main/ets/interface/CommonInterface';
+export { ILogin } from './src/main/ets/interface/CommonInterface';
 ```
 
-**Dependency Injection** — InversifyJS manages ~50 adapters registered as singletons:
+`childProcess.ets` separately exports `WebChildProcess`.
 
-```
-CommonModule  → AbilityManager, DragParamManager, SystemFloatingWindowManager
-AdapterModule → ContextAdapter, DragDropAdapter, MultiInputAdapter,
-                NativeThemeAdapter, PermissionManagerAdapter, DialogAdapter,
-                TrashAdapter, CloudSyncAdapter ...
-```
+**Dependency injection** — InversifyJS manages adapter singletons; registration lives in `common/CommonModule.ets` and `common/AdapterModule.ets`.
 
-### `electron` (HAP Entry Package)
+### `electron` (HAP entry module)
 
 The executable application module containing all UI pages and application logic.
 
-**Ability Components:**
+**Ability components:**
 
-| Ability | Page | Purpose |
+| Ability | Type | Purpose |
 |---------|------|---------|
-| `EntryAbility` | Index.ets | Main entry point, initializes AGC |
-| `BrowserAbility` | WindowNode.ets | Browser process window |
-| `StatelessAbility` | Index.ets | Stateless windows |
-| `BrowserEmbeddedAbility` | EmbeddedWindow.ets | Embedded UI |
-| `StatusBarEntryAbility` | StatusBarPage.ets | Status bar extension |
+| `EntryAbility` | UIAbility | Main entry, initializes AGC |
+| `BrowserAbility` | UIAbility | Browser process window |
+| `StatelessAbility` | UIAbility | Stateless window |
+| `StatusBarEntryAbility` | ExtensionAbility (`statusBarView`) | Status bar extension |
+| `BrowserEmbeddedAbility` | ExtensionAbility (`embeddedUI`) | Embedded window |
 
-**UI Pages:**
+**UI pages:**
 
 | Page | Description |
 |------|-------------|
-| `Index.ets` | Main view hosting the `WebWindow` component |
-| `WindowNode.ets` | Browser window node |
-| `SubWindow.ets` | Sub-window (popups, settings, etc.) |
-| `EmbeddedWindow.ets` | Embedded window |
+| `Index.ets` | Main interface hosting the `WebWindow` component |
+| `WindowNode.ets` | Browser window node, loaded by `BrowserAbility` |
+| `SubWindow.ets` | Child windows (popups, settings) |
+| `EmbeddedWindow.ets` | Embedded window, loaded by `WebEmbeddedAbility` |
 | `Login.ets` | Huawei Account sign-in page |
+| `QuickLoginButtonComponent.ets` | The one-tap sign-in button used by the login page |
 | `StatusBarPage.ets` | Status bar page |
-| `WebPage.ets` | WebView page for privacy agreements, etc. |
+| `WebPage.ets` | WebView pages such as the privacy policy |
 
 ---
 
 ## Adapter Layer
 
-The adapter layer is the most critical infrastructure in OHsidian — it wraps HarmonyOS native APIs as Electron-compatible interfaces, allowing Obsidian to run on HarmonyOS with zero awareness of the underlying platform.
+The adapter layer is ObsidianHM's most important infrastructure — it wraps HarmonyOS native APIs as Electron-compatible call interfaces.
 
-### Adapter Catalog
+### Adapter Inventory
 
-Each adapter extends `BaseAdapter`, is registered as a singleton via InversifyJS, and comes with a corresponding JSBind binding class:
+Every adapter extends `BaseAdapter`, is registered as a singleton through InversifyJS, and has a matching JSBind class:
 
 ```
 web_engine/src/main/ets/adapter/
-├── Accessibility.ets           # Accessibility features
-├── AppLifecycle.ets            # Application lifecycle
-├── AppWindow.ets               # Application window operations
-├── Battery.ets                 # Battery status
-├── Bluetooth.ets               # Bluetooth Classic
-├── BluetoothLowEnergy.ets      # Bluetooth Low Energy
-├── BrowserPolicy.ets           # Browser security policies
-├── CertManager.ets             # Certificate management
-├── CloudSync.ets               # Huawei Cloud Sync ⭐
-├── Context.ets                 # Application context
-├── ContextPath.ets             # File path resolution
-├── Cursor.ets                  # Custom cursors
-├── Device.ets                  # Device information
-├── DeviceInfo.ets              # Hardware information
-├── DeviceUserAuth.ets          # Biometric authentication
-├── Dialog.ets                  # Native dialogs
-├── Display.ets                 # Display/monitor management
-├── DragDrop.ets                # Drag-and-drop
-├── ElectronApp.ets             # Electron App API shim
-├── ExternalProtocol.ets        # External protocol handlers
-├── FileManager.ets             # File system operations
-├── FilePicker.ets              # File picker
-├── Font.ets                    # System font enumeration
-├── Geolocation.ets             # Geolocation
-├── I18n.ets                    # Internationalization
-├── IMF.ets                     # Input Method Framework
-├── Media.ets                   # Media playback
-├── MimeType.ets                # MIME type mapping
-├── MultiInput.ets              # Multi-window input
-├── NativeTheme.ets             # System theme (dark/light)
-├── NetConnection.ets           # Network connectivity
-├── Notification.ets            # System notifications
-├── Ocr.ets                     # OCR recognition
-├── PasteBoard.ets              # Clipboard
-├── PermissionManager.ets       # Permission management
-├── PopupWindow.ets             # Popup windows
-├── PowerMonitor.ets            # Power monitoring
-├── Print.ets                   # Print service
-├── Process.ets                 # Process management
-├── RunningLock.ets             # Wake locks
-├── ScreenlockMonitor.ets       # Screen lock monitoring
-├── Screenshot.ets              # Screen capture
-├── ShapeDetection.ets          # Shape detection
-├── Speech.ets                  # Text-to-speech
-├── StatusBar.ets               # Status bar control
-├── SubWindow.ets               # Sub-window management
-├── SystemFloatingWindow.ets    # System floating windows
-└── Trash.ets                   # Trash/recycle bin operations
+├── AccessibilityAdapter.ets         # Accessibility
+├── AppLifecycleAdapter.ets          # Application lifecycle
+├── AppWindowAdapter.ets             # Application window operations
+├── BatteryAdapter.ets               # Battery status
+├── BluetoothAdapter.ets             # Bluetooth classic
+├── BluetoothLowEnergyAdapter.ets    # Bluetooth low energy
+├── BrowserPolicyAdapter.ets         # Browser security policy
+├── CertManagerAdapter.ets           # Certificate management
+├── ContextAdapter.ets               # Application context
+├── ContextPathAdapter.ets           # File path resolution
+├── CursorAdapter.ets                # Custom cursors
+├── DefaultApplicationAdapter.ets    # Default application lookup
+├── DeviceAdapter.ets                # Device information
+├── DeviceInfoAdapter.ets            # Hardware information
+├── DeviceUserAuthAdapter.ets        # Biometric authentication
+├── DialogAdapter.ets                # Native dialogs
+├── DisplayAdapter.ets               # Display management
+├── DragDropAdapter.ets              # Drag and drop
+├── ElectronAppAdapter.ets           # Electron App API
+├── ExternalProtocolAdapter.ets      # External protocol handling
+├── FileManagerAdapter.ets           # File management
+├── FilePickerAdapter.ets            # File picker
+├── FontAdapter.ets                  # System font enumeration
+├── GeolocationAdapter.ets           # Geolocation
+├── I18nAdapter.ets                  # Internationalization
+├── IMFAdapter.ets                   # Input method framework
+├── MediaAdapter.ets                 # Media playback
+├── MimeTypeAdapter.ets              # MIME types
+├── MultiInputAdapter.ets            # Multi-window input
+├── NativeThemeAdapter.ets           # System theme
+├── NetConnectionAdapter.ets         # Network connectivity
+├── NotificationAdapter.ets          # System notifications
+├── OcrAdapter.ets                   # OCR
+├── PasteBoardApadter.ets            # Clipboard
+├── PermissionManagerAdapter.ets     # Permission management
+├── PopupWindowAdapter.ets           # Popup windows
+├── PowerMonitorAdapter.ets          # Power monitoring
+├── PrintAdapter.ets                 # Printing
+├── ProcessAdapter.ets               # Process management
+├── RunningLockAdapter.ets           # Wake lock
+├── ScreenlockMonitorAdapter.ets     # Screen lock monitoring
+├── ScreenshotAdapter.ets            # Screen capture
+├── ShapeDetectionAdapter.ets        # Shape detection
+├── SpeechAdapter.ets                # Text-to-speech
+├── StatusBarManager.ets             # Status bar control
+├── SubWindowAdapter.ets             # Child window management
+├── SystemFloatingWindowAdapter.ets  # System floating windows
+└── TrashAdapter.ets                # Trash operations
 ```
 
-### JSBind Mechanism
+### JSBind Registration
 
-Each adapter has a corresponding Bind class that registers its methods with the JS runtime:
+Each adapter has a Bind class that registers its methods into the JS runtime:
 
 ```typescript
-// Example: CloudSync adapter JSBind registration
-JsBindingUtils.bindFunction("CloudSync.uploadFile", cloudSyncAdapter.uploadFile)
-JsBindingUtils.bindFunction("CloudSync.downloadFile", cloudSyncAdapter.downloadFile)
-JsBindingUtils.bindFunction("CloudSync.listCloudFiles", cloudSyncAdapter.listCloudFiles)
+// Example: clipboard adapter JSBind registration
+JsBindingUtils.bindFunction('PasteBoardAdapter.ReadPasteBoardText', readPasteBoardText);
+JsBindingUtils.bindFunction('PasteBoardAdapter.WriteData', writeData);
+JsBindingUtils.bindFunction('PasteBoardAdapter.ReadImageBuff', readImageBuff);
 // ...
 ```
 
-All bindings are activated at startup through `JsBindingMethod.ets`.
+All bindings are activated at startup through `jsbindings/JsBindingMethod.ets`. There are currently 240 bindings across 48 Bind classes.
 
 ---
 
-## Huawei Cloud Sync
+## Customization
 
-OHsidian implements Vault cloud synchronization based on Huawei Cloud Foundation Kit.
+**`obsidian.asar` stays byte-for-byte the official release, with no patches applied.** When official behavior needs to change, the change goes into the outer runtime instead:
 
-### Sync Architecture
+| Location | What it carries |
+|----------|-----------------|
+| `app/main.js` | All main-process changes. Version-floor short circuit, early remote enable, tray, close-to-tray, font compatibility, trash compatibility, the deeplink queue, the log channel |
+| `app/inject/preload.js` | Earliest renderer injection. i18n lookup wrapping, log forwarding |
+| `app/inject/dom-ready.js` | Post-ready injection. Window buttons and right margin, titlebar text, settings page adjustments |
 
-```
-┌──────────────┐     ┌──────────────────┐     ┌─────────────────────┐
-│   Obsidian   │────▶│  CloudSyncAdapter │────▶│ CloudFoundation Kit  │
-│   triggers    │     │  (ArkTS Adapter)  │     │  (Huawei Cloud)      │
-│   writes     │     │                  │     │                     │
-└──────────────┘     └──────────────────┘     └─────────────────────┘
-                                                    │
-                                              ┌─────▼──────────┐
-                                              │  Bucket:        │
-                                              │  ohsidian-vault │
-                                              │  -sync-75ued    │
-                                              └────────────────┘
-```
+Three constraints apply when changing injection code. Violating any of them builds successfully but fails at runtime:
 
-### Storage Structure
+1. **remote must be enabled when the WebContents is created.** Call `remote.enable(contents)` from `app.on('web-contents-created', ...)`, registered before the asar is loaded
+2. **Overriding an official channel requires `removeAllListeners` first, and the code must run after `loadApp()`.** The official `ipcMain.on` calls all live inside the function that the asar's `module.exports` invokes
+3. **Do not override `window.close`.** The override applies to every renderer process and breaks three things: closing the starter window, switching vaults, and closing the settings popup
 
-```
-{userId}/
-  └── vaults/
-      └── {vaultName}/
-          ├── file1.md
-          ├── attachments/
-          │   └── image.png
-          └── ...
+The only required patch is the `version` field in the outer `package.json`, which determines the installer version shown on the About page.
+
+Verify asar purity:
+
+```bash
+node .agents/skills/obsidian-asar-upgrade/scripts/verify-asar.mjs \
+  web_engine/src/main/resources/resfile/resources/app/obsidian.asar 1.13.4
 ```
 
-### Sync Operations
-
-| Operation | Description |
-|-----------|-------------|
-| `uploadFile` | Upload local file to cloud |
-| `downloadFile` | Download file from cloud |
-| `listCloudFiles` | List files in cloud |
-| `deleteCloudFile` | Delete cloud file |
-| `getSyncStatus` | Get sync status |
-
-### Sign-In Flow
-
-1. Obsidian writes a `.hcs-login-pending` marker file
-2. The HarmonyOS side detects it via a 3-second polling interval
-3. An `hcs-login` dialog appears with a one-tap Huawei Account sign-in button
-4. After user authorization, `userId` is persisted to `hcs-user.json` for Obsidian to read
-5. All subsequent sync operations build cloud paths based on this `userId`
+Per-item decisions are recorded in `docs/asar-customization-runtime.md`.
 
 ---
 
 ## Build & Run
 
-### Prerequisites
+### Requirements
 
-| Tool | Required Version |
-|------|-----------------|
+| Tool | Notes |
+|------|-------|
 | DevEco Studio | 5.0.0+ |
 | HarmonyOS SDK | API 22 (6.0.2) |
 | Node.js | 18.x+ |
-| Hvigor | 5.0.0+ |
 
-### Build Steps
+### Build and Install
 
 ```bash
-# 1. Clone the repository
-git clone https://github.com/your-username/ohsidian.git
-cd ohsidian
-
-# 2. Install dependencies (automatically done in DevEco Studio)
-#    Or manually:
-hvigorw install
-
-# 3. Build the HAP
-hvigorw assembleHap
-
-# 4. Output artifact
-# build/outputs/default/electron-default-signed.hap
+devecocli build
+devecocli run --skip-build --device <device-serial>
 ```
 
-Alternatively, open the project in DevEco Studio and click **Build > Build HAP(s)**.
+If `devecocli` is not on PATH, use `/storage/Users/currentUser/npm/bin/devecocli`.
+
+Build output lands in `electron/build/default/outputs/default/`; the signed HAP is `electron-default-signed.hap`.
 
 ### Signing Configuration
 
-Configure signing in `build-profile.json5`:
+`build-profile.json5` contains signing credentials and is gitignored. Copy the template and fill in your own values:
 
-> **Note:** `build-profile.json5` is `.gitignore`-d. Copy `build-profile.example.json5` and fill in your own credentials.
-
-```json5
-{
-  "app": {
-    "signingConfigs": [
-      {
-        "name": "default",
-        "type": "HarmonyOS",
-        "material": {
-          "certpath": "~/.ohos/config/your_cert.cer",
-          "storePassword": "******",
-          "keyAlias": "debugKey",
-          "keyPassword": "******",
-          "profile": "~/.ohos/config/your_profile.p7b",
-          "signAlg": "SHA256withECDSA"
-        }
-      }
-    ]
-  }
-}
+```bash
+cp build-profile.example.json5 build-profile.json5
 ```
 
 ### Huawei AGC Setup
 
-> **Note:** `agconnect-services.json` is `.gitignore`-d. Copy `agconnect-services.example.json` and fill in your own credentials.
+1. Create an application in [AppGallery Connect](https://developer.huawei.com/consumer/cn/service/josp/agc/)
+2. Download `agconnect-services.json` into `electron/src/main/resources/rawfile/` and fill in the actual `client_id`, `app_id`, `api_key`, and related fields (`agconnect-services.example.json` in the repo serves as a field template)
+3. Change `client_id` in the `metadata` block of `electron/src/main/module.json5` to the value for that application
 
-1. Create an app on [AppGallery Connect](https://developer.huawei.com/consumer/en/service/josp/agc/)
-2. Download `agconnect-services.json`
-3. Place it at `electron/src/main/resources/rawfile/agconnect-services.json`
-4. Enable Account Kit and Cloud Storage services
+### Debugging
+
+Diagnostic output from the injection scripts is written to `obsidian.log` in the application data directory. On device, `console.log` reaches neither the log file nor hilog, so injection code writes through the `ohsidian-log` channel to the main process instead.
+
+```bash
+hdc shell "tail -n 60 /data/app/el2/100/base/com.mikannqaq.obsidian/files/obsidian.log"
+```
+
+Log timestamps are UTC; Beijing time is UTC+8. If the newest log entry predates the process start time, the running process has not written any log.
 
 ---
 
 ## Project Structure
 
 ```
-obsidian/
-├── AppScope/                         # Global app configuration
+ObsidianHM/
+├── AppScope/                         # Global application config
 │   ├── app.json5                     # bundleName, version, multi-instance mode
 │   └── resources/base/
-│       ├── element/string.json       # App name "OHsidian"
-│       ├── media/                    # App icons (startIcon, trayIcon)
-│       └── profile/                  # Font scale settings
+│       ├── element/string.json       # Application name "Obsidian"
+│       ├── media/                    # App icons (app_icon, startIcon, tray)
+│       └── profile/configuration.json
 │
 ├── web_engine/                       # HAR static library (core engine)
 │   ├── Index.ets                     # Public API exports
-│   ├── childProcess.ets              # Child process exports
+│   ├── childProcess.ets              # WebChildProcess export
 │   ├── oh-package.json5              # Deps: inversify, reflect-metadata
 │   ├── hvigorfile.ts                 # harTasks build
 │   └── src/main/
 │       ├── ets/
 │       │   ├── ability/              # WebAbility, WebEmbeddedAbility base classes
-│       │   ├── adapter/              # ~50 system adapters
-│       │   ├── application/          # AbilityStage
-│       │   ├── common/               # DI container, constants, managers
-│       │   ├── components/           # WebWindow, WebSubWindow UI components
+│       │   ├── adapter/              # 48 system adapters
+│       │   ├── application/          # WebAbilityStage
+│       │   ├── common/               # DI container, BaseAdapter, managers
+│       │   ├── components/           # WebWindow, WebSubWindow, and other UI components
 │       │   ├── interface/            # TypeScript interface definitions
-│       │   ├── jsbindings/           # JSBind registration
-│       │   ├── process/              # ChildProcess management
-│       │   └── utils/                # Logging, helper utilities
-│       ├── cpp/types/libadapter/     # C++ native library type declarations
-│       └── resources/resfile/resources/app/
-│           ├── main.js               # Electron bootstrap entry point
-│           ├── package.json          # Obsidian 1.12.7 wrapper config
-│           └── obsidian.asar          # Obsidian application archive
+│       │   ├── jsbindings/           # JSBind registration (48 Bind classes)
+│       │   ├── process/              # WebChildProcess
+│       │   └── utils/                # Logging and utilities
+│       ├── cpp/types/libadapter/     # Type declarations for libadapter.so
+│       └── resources/resfile/resources/app/   # Outer runtime (Electron app directory)
+│           ├── main.js               # Outer bootstrap script
+│           ├── inject/               # Renderer injection scripts
+│           ├── node_modules/         # @electron/remote, shipped with the package
+│           ├── obsidian.asar         # Official engine (tracked by Git LFS)
+│           ├── package.json          # Outer manifest; version must match the engine
+│           ├── icon.png
+│           └── tray.png              # Tray icon
 │
 ├── electron/                         # HAP entry module
 │   ├── oh-package.json5              # Deps: web_engine, AGC hmcore
 │   ├── hvigorfile.ts                 # hapTasks build
-│   └── src/main/
-│       ├── module.json5              # Module manifest (Abilities, pages, permissions)
-│       ├── ets/
-│       │   ├── Application/          # MyAbilityStage
-│       │   ├── entryability/         # Entry, Browser, Stateless Ability
-│       │   ├── extensionAbility/     # EmbeddedAbility, StatusBar
-│       │   ├── pages/                # UI pages
-│       │   └── process/              # CustomChildProcess
-│       ├── resources/
-│       │   ├── base/element/         # String resources
-│       │   ├── base/profile/         # main_pages routing config
-│       │   ├── rawfile/              # agconnect-services.json
-│       │   └── zh_CN|en_US/element/  # i18n strings
-│       └── ohosTest/                 # Unit tests
+│   ├── libs/arm64-v8a/               # libadapter.so
+│   └── src/
+│       ├── main/
+│       │   ├── module.json5          # Module manifest (abilities, pages, permissions)
+│       │   ├── ets/
+│       │   │   ├── Application/      # AbilityStage
+│       │   │   ├── entryability/     # Entry, Browser, Stateless, StatusBar
+│       │   │   ├── extensionAbility/ # BrowserEmbeddedAbility
+│       │   │   ├── pages/            # UI pages
+│       │   │   ├── process/          # CustomChildProcess
+│       │   │   └── utils/            # DeeplinkBridge
+│       │   └── resources/
+│       │       ├── base/element/     # String resources
+│       │       ├── base/profile/     # main_pages routing config
+│       │       ├── rawfile/          # agconnect-services.json
+│       │       └── zh_CN|en_US/element/
+│       └── ohosTest/                 # Test templates from the DevEco scaffold
 │
-├── hvigor/                           # Hvigor build configuration
+├── tools/                            # Symbol resolver: locates injection points in the official asar
+├── docs/                             # Project documentation, see "Documentation"
+├── .agents/skills/                   # Engine upgrade skill
+├── build-profile.example.json5       # Signing config template
+├── hvigor/                           # Hvigor build config
 ├── hvigorfile.ts                     # Root build file (appTasks)
-├── build-profile.example.json5       # Build config template
-├── oh-package.json5                  # Root package config
-└── oh-package-lock.json5             # Dependency lock file
+└── oh-package.json5                  # Root package config
 ```
 
 ---
@@ -451,28 +408,40 @@ obsidian/
 
 ### Runtime Dependencies
 
-| Dependency | Version | Description |
-|------------|---------|-------------|
-| `inversify` | ^6.0.1 | IoC container for adapter dependency injection |
+| Dependency | Version | Notes |
+|------------|---------|-------|
+| `inversify` | ^6.0.1 | IoC container managing adapter injection |
 | `reflect-metadata` | ^0.1.13 | TypeScript decorator metadata |
-| `@electron/remote` | ^2.1.3 | Electron remote module compatibility |
 | `@hw-agconnect/hmcore` | ^1.0.1 | Huawei AGC core services |
-| `libadapter.so` | — | C++ native adapter library (local reference) |
-| `btime` | — | File timestamp utilities |
-| `get-fonts` | — | System font enumeration |
+| `libadapter.so` | — | C++ native adapter library (local reference, prebuilt) |
+| `btime` / `get-fonts` | — | Node dependencies shipped with the package under `app/node_modules/`, with prebuilt `binding.node` binaries |
+| `@electron/remote` | 2.1.3 | Electron remote compatibility, under `app/node_modules/` |
 
-### Dev Dependencies
+### Development Dependencies
 
-| Dependency | Version | Description |
-|------------|---------|-------------|
-| `@ohos/hypium` | ^1.0.6 | HarmonyOS test framework |
-| `@ohos/hvigor-ohos-plugin` | — | Hvigor build plugin |
+| Dependency | Version | Notes |
+|------------|---------|-------|
+| `@ohos/hypium` | 1.0.6 | HarmonyOS test framework |
+
+---
+
+## Documentation
+
+| Document | Contents |
+|----------|----------|
+| `docs/obsidian-internals.md` | Official internals: the 44 channels, global objects, i18n lookup, settings page structure, titlebar, platform differences |
+| `docs/asar-customization-runtime.md` | Per-item customization decisions and their basis |
+| `docs/asar-upgrade.md` | Engine upgrade procedure and the recorded differences between versions |
+| `docs/runtime-inject-verification.md` | On-device verification records |
+| `docs/runtime-inject-plan.md` | Historical record of the runtime injection plan |
+| `.agents/skills/obsidian-asar-upgrade/SKILL.md` | The full engine upgrade procedure, including the injection-point reference table |
+| `AGENTS.md` | Repository-level working conventions |
 
 ---
 
 ## License
 
-This project is open-sourced under the **BSD 3-Clause License**.
+The source code of this project is under the **BSD 3-Clause License**. Each source file retains the full license header.
 
 ```
 Copyright (c) 2023-2025, Haitai FangYuan Co., Ltd.
@@ -481,10 +450,10 @@ All rights reserved.
 
 ### Third-Party Licenses
 
-- **Obsidian** is a trademark of its respective owners. This project provides a HarmonyOS-compatible runtime environment for the pre-compiled `obsidian.asar`.
-- **Electron** and `@electron/remote` are under the MIT License.
-- **InversifyJS** is under the MIT License.
-- **Huawei SDK** components are subject to the Huawei Developer Agreement.
+- **Obsidian** is a trademark of its respective owner; this project provides a HarmonyOS runtime environment for the official `obsidian.asar`
+- **Electron** and `@electron/remote` are under the MIT License
+- **InversifyJS** is under the MIT License
+- **Huawei SDK** components are subject to the Huawei Developer Agreement
 
 ---
 
@@ -492,13 +461,13 @@ All rights reserved.
 
 This project stands on the shoulders of giants:
 
-- [Obsidian](https://obsidian.md) — The note-taking app that changed knowledge management
-- [Electron](https://www.electronjs.org) — The cross-platform desktop application framework
-- [HarmonyOS](https://developer.huawei.com/consumer/en/harmonyos/) — The all-scenario distributed operating system
-- [InversifyJS](https://inversify.io) — The powerful TypeScript IoC container
+- [Obsidian](https://obsidian.md) — the note-taking app that changed knowledge management
+- [Electron](https://www.electronjs.org) — the cross-platform desktop application framework
+- [HarmonyOS](https://developer.huawei.com/consumer/cn/harmonyos/) — the all-scenario distributed operating system
+- [InversifyJS](https://inversify.io) — a powerful TypeScript IoC container
 
 ---
 
 <p align="center">
-  <sub>OHsidian is a community project and is not affiliated with Obsidian officially.</sub>
+  <sub>ObsidianHM is a community project, unaffiliated with Obsidian officially.</sub>
 </p>

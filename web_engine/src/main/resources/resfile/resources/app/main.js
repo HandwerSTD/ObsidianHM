@@ -670,7 +670,7 @@ function installTray() {
 		trayIcon.on('click', toggle);
 	} catch (e) {}
 	try {
-		trayIcon.setToolTip('OHsidian');
+		trayIcon.setToolTip('Obsidian');
 	} catch (e) {}
 	try {
 		trayIcon.setContextMenu(Menu.buildFromTemplate([
