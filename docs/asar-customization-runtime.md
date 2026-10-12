@@ -139,7 +139,7 @@ qy(pf,xie)&&!electron.ipcRenderer.sendSync("disable-update")?K():(...)
 | 「关于」页版本项改写 | 运行时注入 |
 | 「贡献作者」条目 | 运行时注入 |
 | 标题栏文字 `OHsidian` | 运行时注入 |
-| 5 处 `window.close()` | 运行时注入 |
+| 5 处 `window.close()` | 不处理，保留官方行为。详见 5.2 |
 | i18n 的 7 个键 | 运行时注入 |
 | `i18n/zh.txt` 的 4 块 | 运行时注入 |
 | app.css 的 3 处 | 运行时注入 |
@@ -402,15 +402,17 @@ var pf=uf,df=hf;
 
 ### 5.2 五处 `window.close()`
 
-**决策：运行时注入。**
+**决策：不处理。**
 
-官方这五处都是打开仓库成功后的关窗动作，形态为 `!0===<结果>?window.close():new wt(...)`。注入脚本在 `dom-ready` 之前覆盖 `window.close` 使其不生效：
+这五处是官方打开仓库成功后的关窗动作，形态为 `!0===<结果>?window.close():new wt(...)`，所在上下文分别是：仓库列表项点击、localStorage 恢复路径、打开目录后走 `vault-message` 或 `vault-open`、打开文件夹对话框、同步设置完成。
 
-```js
-window.close = function () {};
-```
+仓库原先把 `window.close` 整体覆盖为空函数，让这些调用全部失效。实测确认这个做法会连带破坏三处：
 
-这比逐处替换调用点更稳，且不受官方改写调用点的影响。5 处的上下文分别是：仓库列表项点击、localStorage 恢复路径、打开目录后走 `vault-message` 或 `vault-open`、打开文件夹对话框、同步设置完成。
+- 起始窗口打开仓库后不关闭，而是残留下来（因为原来的窗口复用逻辑没有一起迁过来）
+- 「切换仓库」命令不可用。官方 `kI` 类的 `onChooseItem` 是 `sendSync("vault-open", ...) ? (this.switchVault && window.close()) : ...`，窗口关不掉就切不过去
+- 设置弹窗关闭失效。官方 `Modal.close` 走 `popout.cleanup`，最终调 `y.close()`，而弹窗渲染进程里的 `window.close` 也被同一份注入覆盖
+
+因此不再覆盖 `window.close`，保留官方的窗口关闭语义。需要「关窗不退出」的是仓库窗口，这件事由外层对 `close` 事件的拦截与托盘完成，不涉及渲染进程。
 
 ### 5.3 品牌 logo 与字标改写
 
@@ -629,7 +631,7 @@ ArkTS 到 Electron 主进程之间只有 `ExecuteCommand` 一条通道，它只�
 
 **第一批：纯外层，不触碰 asar 内部。**
 
-Electron 版本下限短路（3.7）、`hcs-*` 通道（3.1）、退出相关通道（3.2）、托盘的创建与关窗处理（3.4、3.5）、`before-quit` 标记（3.6）、`starter` 与 `help` 通道（3.3）、APK 层 CSS 注入与 HTML 标题（6.3、6.4）、starter 的标题文字与 `window.close` 覆盖（5.1、5.2）。
+Electron 版本下限短路（3.7）、`hcs-*` 通道（3.1）、退出相关通道（3.2）、托盘的创建与关窗处理（3.4、3.5）、`before-quit` 标记（3.6）、APK 层 CSS 注入与 HTML 标题（6.3、6.4）、starter 的标题文字（5.1）。
 
 这一批全部位于 `web_engine/src/main/resources/resfile/resources/app/main.js` 与它引用的注入脚本内，构建脚本的改动只是删除对应补丁。风险最低，可以逐项验证。
 

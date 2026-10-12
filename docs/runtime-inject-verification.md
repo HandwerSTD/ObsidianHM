@@ -159,7 +159,7 @@ function WJ(e){
 | 文件 | 内容 |
 |------|------|
 | `hcs-channels.js` | 十二个华为云同步通道的工厂函数，由外层调用后注册 |
-| `preload.js` | 最早时机：屏蔽 `window.close`、包装 `i18next.t` |
+| `preload.js` | 最早时机：包装 `i18next.t` |
 | `dom-ready.js` | 页面结构就绪后：设置页注入、标题栏文字、文档标题、窗口按钮与右边距、起始窗口样式 |
 
 资源：`tray.png`（314843 字节）放到 asar 之外，与 `obsidian.asar` 同目录。
@@ -181,7 +181,6 @@ HarmonyOS port: desktop auto-update is disabled
 [PROBE] WebContents 1 类型 window：remote 开启前 false 开启后 true
 托盘已初始化 /data/storage/el1/bundle/electron/resources/resfile/resources/app/tray.png
 [INJECT] preload 开始施加
-[INJECT] window.close 已屏蔽
 注入脚本已施加 preload.js WebContents 1 类型 vault
 [INJECT] dom-ready 注入开始
 注入脚本已施加 dom-ready.js WebContents 1 类型 vault
@@ -211,9 +210,9 @@ Require stack:
 
 **i18next 包装生效。** 日志记录 `i18next.t 已包装`。包装前用官方 `lib/i18next.min.js` 单独实测过：键的形态是 kebab-case 且以 `setting.about.` 开头（例如 `setting.about.label-version`），命中自定义键返回改写值，未命中的键交给官方实现处理。
 
-### 8.4 首轮注入发现的两处缺陷
+### 8.4 发现并修正的三处缺陷
 
-首轮完整注入后做了一次独立核对，发现两处真实缺陷，均已修正并重新实测。
+首轮完整注入后做了一次核对，发现三处真实缺陷，均已修正并重新实测。
 
 **一、两个设置页的包装在第一个分组就返回。**
 
@@ -239,6 +238,26 @@ Require stack:
 ```
 disable-update 被调用，参数 （读取）
 ```
+
+**三、全局屏蔽 `window.close` 破坏了官方行为。**
+
+`preload.js` 原本把 `window.close` 覆盖为空函数，用于让起始窗口打开仓库后不关闭。覆盖是无条件的，作用于每一个渲染进程，连带破坏三处：
+
+- **起始窗口残留。** 原先不关闭是为了配合仓库版本的窗口复用（把起始窗口改造成仓库窗口），而那份复用逻辑在当前实现里并不存在，于是起始窗口只是单纯地留了下来，点「帮助」还会另开一个窗口。
+- **「切换仓库」不可用。** 官方 `kI` 类的 `onChooseItem` 是 `!0===sendSync("vault-open", e.path, !1) ? (this.switchVault && window.close()) : ...`。窗口关不掉，切换动作走到一半。
+- **设置弹窗关不掉。** 官方 `Modal.close` 经 `popout.cleanup` 调 `y.close()`。弹窗是由 `window.open("about:blank")` 造出的独立窗口，`preload.js` 在它上面同样生效，因此这个 `close` 也被吞掉。
+
+修正方式是移除这段覆盖，保留官方的窗口关闭语义。需要「关窗不退出」的是仓库窗口，这件事由外层对 `close` 事件的拦截与托盘完成，本就不需要动渲染进程。
+
+同时修掉两处因此产生的误导性日志：起始窗口上会打印「等待 window.app 超时，设置页注入放弃」（起始窗口本来就没有 `window.app`，不是失败），改成「当前为起始窗口，无需设置页注入」。
+
+实测日志：
+
+```
+[INJECT] 当前为起始窗口，无需设置页注入
+```
+
+且本轮日志中不再出现 `window.close 已屏蔽`。
 
 ### 8.5 仍未验证
 
