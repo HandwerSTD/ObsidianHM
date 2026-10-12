@@ -1,10 +1,12 @@
 # asar 定制的归属决策
 
-本文件对仓库在 Obsidian 1.12.7 上做过的全部定制逐项做出决定：改为运行时注入、保留补丁、或者本轮暂缓。
+本文件对仓库在 Obsidian 1.12.7 上做过的全部定制逐项说明最终归属。后续沿用的原则是向官方对齐：能由外层施加的走运行时注入，属于产品层面改写的一律放弃，asar 保持官方原版。
 
-运行时注入指由外层引导脚本（`web_engine/src/main/resources/resfile/resources/app/main.js`）或由它注入渲染进程的脚本施加改动，asar 内的官方文件保持原样。这样升级内核时不需要因为官方改写而重新定位这些改动。
+运行时注入指由外层引导脚本（`web_engine/src/main/resources/resfile/resources/app/main.js`）或由它注入渲染进程的脚本施加改动。这样升级内核时不需要因为官方改写而重新定位这些改动。
 
 本文件的判定已完成设备实测验证，实测细节见 `docs/runtime-inject-verification.md`。实测确认：官方原版 asar 能被加载运行，外层注入能执行，remote 能被开启，设备上的 Electron 真实版本为 `5.0.0-Release`。
+
+asar 与官方原版逐字节一致，md5 `bbae59d36fe60500436a82cb841d5ad6`，25783388 字节。
 
 ## 1. 判定依据
 
@@ -120,7 +122,38 @@ qy(pf,xie)&&!electron.ipcRenderer.sendSync("disable-update")?K():(...)
 
 官方 1.13.4 的 `main.js` 里 `new l.Tray` 命中 0 次。托盘完全是本项目的定制。
 
+官方全部 380 个文件里搜「Tray」只有两处，都在第三方库中（`lib/prism.min.js`、`lib/pdfjs/pdf.worker.min.mjs`），与托盘无关。`setSkipTaskbar` 与 `statusBar` 也都是 0 次。
+
 `ipcMain.on("frame",...)` 在官方与仓库版本里都是 1 处，是官方自带。
+
+### 1.7 官方提供的可复用通道
+
+这几条通道是官方的，外层可以直接读取或覆盖：
+
+| 通道 | 用途 |
+|------|------|
+| `is-quitting` | 返回官方的退出标志 `be` |
+| `is-closing` | 返回 `be || 该窗口的 closing` |
+| `disable-update` | 读写 `D.updateDisabled`，官方据此隐藏更新入口 |
+| `update` | 返回更新状态字符串 |
+| `check-update` | 返回是否有更新在检查中 |
+| `frame` | 读写标题栏样式 `D.frame` |
+
+`disable-update` 用 `ipcMain.removeAllListeners` 后重新注册为恒返回 `true` 即可规避 installer 版本过低提示（见 4.8）。
+
+### 1.8 官方窗口关闭行为的平台差异
+
+官方 `main.js` 里：
+
+```js
+var W = process.platform === "darwin"
+app.on("window-all-closed", () => { W || app.quit() })
+app.on("activate", () => { be = !1; BrowserWindow.getAllWindows().length === 0 && _e() })
+```
+
+非 macOS 平台上关掉最后一个窗口就退出应用；macOS 上不退出，点 Dock 图标（`activate`）时若窗口数为 0 则重新走启动逻辑。
+
+本项目的托盘与「关窗到托盘」提供的是同一套效果：关窗不退出，由托盘提供返回窗口与退出的入口。这套定制来自上游仓库（提交 `d8f8a27`，作者 Hanversion），与内核版本无关，升级时只需照原样搬到外层。
 
 ## 2. 决策总表
 
@@ -128,7 +161,7 @@ qy(pf,xie)&&!electron.ipcRenderer.sendSync("disable-update")?K():(...)
 |------|------|
 | 12 个 `hcs-*` 通道 | 运行时注入 |
 | `exit-to-tray`、`force-quit` 通道 | 运行时注入 |
-| `starter`、`help` 通道的处理逻辑 | 运行时注入 |
+| `starter`、`help` 通道的处理逻辑 | 不处理，采用官方行为。详见 3.3 |
 | 托盘初始化 | 运行时注入 |
 | 关窗最小化到托盘 | 运行时注入 |
 | `before-quit` 标记 | 运行时注入 |
@@ -145,16 +178,17 @@ qy(pf,xie)&&!electron.ipcRenderer.sendSync("disable-update")?K():(...)
 | app.css 的 3 处 | 运行时注入 |
 | 三个 HTML 的标题 | 运行时注入 |
 | installer 版本比较对象 `xie` | 运行时注入 |
-| help 窗口复用 starter 窗口 | 保留补丁 |
-| starter 窗口复用为仓库窗口 | 保留补丁 |
-| 打开最近仓库时复用 starter 窗口 | 保留补丁 |
-| `[HMOS-FRAME]` 窗口按钮处理 | 保留补丁 |
-| `package.json` 的 author / description / version | 保留补丁 |
+| help 窗口复用 starter 窗口 | 放弃，采用官方行为 |
+| starter 窗口复用为仓库窗口 | 放弃，采用官方行为 |
+| 打开最近仓库时复用 starter 窗口 | 放弃，采用官方行为 |
+| `[HMOS-FRAME]` 窗口按钮处理 | 运行时注入 |
+| `package.json` 的 version | 保留补丁（必须） |
+| `package.json` 的 author / description | 放弃，采用官方值 |
 | `icon.png` 替换、`tray.png` 新增 | 保留（复制文件） |
-| 移除 `icon.png.bak`、`harmonyos-sync-bridge.js` | 保留（删除文件） |
-| starter 品牌 logo 改写 | 暂缓 |
-| 商业许可证改名「社区许可证」 | 暂缓 |
-| 许可证激活弹窗改为静态说明 | 暂缓 |
+| 移除 `icon.png.bak`、`harmonyos-sync-bridge.js` | 已消除 |
+| starter 品牌 logo 改写 | 放弃，采用官方行为 |
+| 商业许可证改名「社区许可证」 | 放弃，采用官方行为 |
+| 许可证激活弹窗改为静态说明 | 放弃，采用官方行为 |
 | `vault-move` 通道删除 | 已消除 |
 
 外层引导脚本已经承载的五项，在表中单列：
@@ -167,7 +201,7 @@ qy(pf,xie)&&!electron.ipcRenderer.sendSync("disable-update")?K():(...)
 | 自动更新短路 | 已在外层，不变 |
 | remote 开启 | 已在外层，1.14.4 需复核 |
 
-## 3. main.js 的十项
+## 3. main.js 的定制
 
 ### 3.1 12 个 `hcs-*` 通道
 
@@ -202,13 +236,18 @@ DeeplinkBridge.enqueue(this.context.getApplicationContext().filesDir, url);
 
 ### 3.3 `starter` 与 `help` 通道的处理逻辑
 
-**决策：运行时注入。**
+**决策：不处理，采用官方行为。**
 
-仓库版本把这两个通道改为按 `BrowserWindow.fromWebContents(t.sender)` 定位发送窗口，全局打开函数只作兜底。既然改的是 `ipcMain` 的处理函数，外层可以在 `require` 之后 `removeAllListeners("starter")` 与 `removeAllListeners("help")`，再注册自己的实现。
+仓库版本把这两个通道改为按 `BrowserWindow.fromWebContents(t.sender)` 定位发送窗口，让发送窗口就地加载另一个页面，全局打开函数只作兜底。这一改动是配合窗口复用使用的：起始窗口变身帮助窗口、关闭帮助窗口再变回起始页。
 
-`BrowserWindow.fromWebContents`、`win.loadURL`、`win.once` 都是公开接口。
+窗口复用已放弃（3.8），这项改动随之失去前提，因此不实现。当前采用官方的全局打开函数：
 
-仓库版本还引用了 asar 内部的窗口表（`IDENT.windowTable`）。改到外层后，用 `app.on("browser-window-created")` 自己维护一张表，或者直接用 `fromWebContents` 的结果，不必读 asar 内部变量。
+```js
+ipcMain.on("starter", t => { t.returnValue = null; ye() })
+ipcMain.on("help", t => { t.returnValue = null; pt() })
+```
+
+两个通道都以 `returnValue = null` 应答，打开的是独立窗口。
 
 ### 3.4 托盘初始化
 
@@ -258,27 +297,38 @@ Object.defineProperty(process.versions, 'electron', {
 
 这一项与 3.1 的 `hcs-*` 通道、3.4 的托盘都无关，只消除版本下限判断两处后果：强制弹窗与跳转下载页。
 
-### 3.8 help 窗口复用 starter 窗口
+### 3.8 三项窗口复用
 
-**决策：保留补丁。**
+**决策：放弃，采用官方行为。**
 
-改动位于 `function <help打开函数>(){if(<help窗口>){...}let <临时变量>=<help窗口>=<辅助窗口创建>({width:600,height:680});` 这段内部分支里，判断闭包内的 starter 窗口变量是否存在并复用。没有外部等价物。
+仓库在 1.12.7 上做过三项窗口复用：help 窗口复用 starter 窗口、starter 窗口复用为仓库窗口、打开最近仓库时复用 starter 窗口。三项都改在 asar 的窗口创建流程内部：
 
-### 3.9 starter 窗口复用为仓库窗口
+- help 打开函数的 `if(<starter窗口>&&!<starter窗口>.isDestroyed())` 分支
+- 启动时按目录结构打开仓库窗口的 `let ke=()=>{...}` 内部
+- 打开函数的两个分支
 
-**决策：保留补丁。**
+它们依赖 `starterOpen`、`starterWindow`、`windowTable`、`vaultWindowCreator`、`windowWiring`、`markVaultOpen`、`configSave`、`configRead`、`vaultUrl`、`helpOpen`、`helpWindow`、`auxWindowCreator`、`help` 这些角色的结构定位，外部没有等价接口。
 
-改动位于启动时按目录结构打开仓库窗口的函数 `let ke=()=>{for(let o in <仓库表>)...}` 内，改写为收集待打开仓库、复用 starter 窗口、并调用内部的窗口接线与打开标记函数。这些函数都是 asar 内部的压缩变量。
+官方行为本身自洽，且与平台无关：
 
-### 3.10 打开最近仓库时复用 starter 窗口
+```js
+function ye(){if(se){se.isMinimized()&&se.restore(),se.focus();return}
+  let o=se=dt({width:800,height:650});o.on("closed",()=>{se=null});
+  let r=()=>o.show();o.loadURL(ae+"starter.html").then(r,r)}
+function pt(){if(we){we.isMinimized()&&we.restore(),we.focus();return}
+  let o=we=dt({width:600,height:680});o.on("closed",()=>{we=null});
+  let r=()=>o.show();o.loadURL(ae+"help.html").then(r,r)}
+```
 
-**决策：保留补丁。**
+两个函数内部都不含平台判定（没有 `process.platform` 分支）。三者在官方逻辑里的表现：
 
-改动位于打开函数的两个分支内，插入的代码调用 `<窗口接线>`、`<打开标记>`、`<配置读取>`、`<配置保存>` 四个内部函数。同样没有外部等价物。
+- 起始窗口打开仓库成功后由 `starter.js` 自己调 `window.close()` 退场
+- 帮助窗口是独立的 600×680 窗口，已存在时聚焦，与起始窗口无关
+- 启动时为每个标记 `open` 的仓库新建窗口，一个都没有时才显示起始窗口
 
-第 3.8 至 3.10 三项集中在 asar `main.js` 的窗口创建流程，是同一片代码。三项合计仍是当前补丁里最脆弱的部分：它们依赖 `starterOpen`、`starterWindow`、`windowTable`、`vaultWindowCreator`、`windowWiring`、`markVaultOpen`、`configSave`、`configRead`、`vaultUrl`、`helpOpen`、`helpWindow`、`auxWindowCreator`、`help` 这些角色的结构定位。
+放弃这三项的前提是同时放弃 `window.close` 的覆盖（见 5.2）。两者是一套：覆盖 `window.close` 服务于窗口复用，复用不做了，覆盖也就必须去掉，否则起始窗口只会残留下来。
 
-### 3.11 第 3.1 项附带的通道增删
+### 3.9 第 3.1 项附带的通道增删
 
 **决策：已消除。**
 
@@ -286,7 +336,7 @@ Object.defineProperty(process.versions, 'electron', {
 
 `hcs-*` 移到外层后，asar 内不再做任何通道增删，这一项自动消失。
 
-## 4. app.js 的八项
+## 4. app.js 的定制
 
 ### 4.1 `HcsSettingsTab` 类定义
 
@@ -357,15 +407,17 @@ p.length>0&&n.push({type:"group",heading:tie.optionAdvanced(),items:p}),n}
 
 ### 4.6 商业许可证改名「社区许可证」
 
-**决策：暂缓。**
+**决策：放弃，采用官方行为。**
 
-1.13.4 里相关文案键仍在（`labelCommercialLicense` 命中 2 次，值 `"Commercial license"`；`labelYourCommercialLicenseKey`、`labelActivateLicense` 等同样存在）。日后的做法是在注入脚本里覆盖这几个键，写法同 6.1。
+仓库版本把此项改名为「社区许可证」，并改写无 key 时的描述与按钮文案。1.13.4 里相关文案键都在（`labelCommercialLicense` 命中 2 次，值 `"Commercial license"`）。
+
+这属于产品层面的改写，与内核升级无关，不再保留。
 
 ### 4.7 许可证激活弹窗改为静态说明
 
-**决策：暂缓。**
+**决策：放弃，采用官方行为。**
 
-日后的做法是替换弹窗类的 `open()` 或 `onOpen()`。`Modal` 是公开导出。
+仓库版本把激活弹窗改成静态说明。做法是替换弹窗类的 `open()` 或 `onOpen()`。同样属于产品层面的改写，不再保留。
 
 ### 4.8 installer 版本比较对象
 
@@ -390,7 +442,7 @@ var pf=uf,df=hf;
 
 **实测确认此项必需**：设备上的 Electron 是 `5.0.0-Release`，`zy` 解析出 `[5,0,0]`，`qy("5.0.0-Release", "28.2.3")` 为 `true`。渲染进程读的是它自己的 `process.versions.electron`，主进程的覆写不影响它。因此 installer 版本过低的提示与下载入口都会出现，处理 `disable-update` 通道是必需的。
 
-## 5. starter.js 的五项
+## 5. starter.js 的定制
 
 ### 5.1 标题栏文字
 
@@ -416,9 +468,9 @@ var pf=uf,df=hf;
 
 ### 5.3 品牌 logo 与字标改写
 
-**决策：暂缓。**
+**决策：放弃，采用官方行为。**
 
-把两段内联 SVG 换成 `icon.png` 图片与 `OHsidian` 文本，属于 DOM 结构替换。日后的做法是在 `dom-ready` 后替换品牌区元素。
+仓库版本把起始窗口品牌区的两段内联 SVG 换成 `icon.png` 图片与 `OHsidian` 文本。属于 DOM 结构替换，也属于品牌层面的改写，不再保留。
 
 ## 6. 文案与样式
 
@@ -520,23 +572,48 @@ i18next.t = function (key, opts) {
 
 ## 7. 文件与资源
 
-### 7.1 `package.json` 的 author / description / version
+### 7.1 `package.json`
 
-**决策：保留补丁。**
+这里有两份 `package.json`，升级时要分清。
 
-这三个字段不是运行时可达的。`version` 必须处理：外层 `currentBaseVersion` 取自 `require('./package.json').version`，`app.getVersion()` 同样读它，启动扫描 userData 时用 `isV2MoreRecent(app.getVersion(), version)` 判断新 asar 是否被采用。漏改会导致新 asar 不生效。
+**asar 内部的**（`obsidian.asar` 里的 `package.json`）：1.12.7 的定制把 `author` 改成 `OHsidian`、`description` 改成 `OHsidian HarmonyOS Edition`。asar 改用官方原版后这一份自动就是官方值，不再处理（官方的 `name` 是 `obsidian-dev`、`main` 是 `index.js`）。
 
-`author` 与 `description` 只影响系统信息展示，成本极低且几乎不随版本变化，一并保留。
+**外层的**（`web_engine/src/main/resources/resfile/resources/app/package.json`）：上游自带的 `author` 与 `description` 本就是 `Obsidian` 与 `Obsidian HarmonyOS Edition`，不是定制产物，保持原样。
+
+**决策：外层只改 `version`，保留补丁（必须）。**
+
+这个字段不是运行时可达的。外层 `currentBaseVersion` 取自 `require('./package.json').version`，`app.getVersion()` 同样读它，启动扫描 userData 时用 `isV2MoreRecent(app.getVersion(), version)` 判断新 asar 是否被采用。漏改会导致新 asar 不生效。
 
 ### 7.2 `icon.png` 与 `tray.png`
 
 **决策：保留（复制文件）。** 与版本无关。
 
-### 7.3 移除 `icon.png.bak` 与 `harmonyos-sync-bridge.js`
+两个文件放在 asar 之外、与 `obsidian.asar` 同目录。两者用途不同，升级时不必一并处理。
 
-**决策：保留（删除文件）。**
+**`tray.png`（314843 字节）必要。** 外层托盘初始化读它，路径是 `path.join(APP_PATH, 'tray.png')`。官方没有任何托盘代码，这个文件只被外层使用。官方原版 asar 里也没有这个文件。
 
-`harmonyos-sync-bridge.js` 在 asar 内无任何引用，导出 `HmosSyncBridge`（`resolveVaultPath` 读 `obsidian.json`，日志前缀 `[HMOS-SYNC]`）。`icon.png.bak` 是官方原图的备份。
+**`icon.png`（1606146 字节）在官方原版 asar 下已不起作用。** 官方唯一读取它的位置是 macOS 的「关于 Obsidian」菜单项：
+
+```js
+let n=`Version ${H} (Installer ${l.app.getVersion()})`;
+await l.dialog.showMessageBox(t, {
+  message: "Obsidian", icon: C.join(i, "icon.png"), detail: ..., type: "info", ...
+})
+```
+
+这里的 `i` 是传给 `module.exports` 的 asarPath 参数。外层传入的是 `.../app/obsidian.asar` 这个 asar 文件路径，Electron 允许把它当作目录前缀访问，因此这段读的是 **asar 内部**的 `icon.png`（官方原图，29937 字节），同目录下的那一个取不到。该菜单项本身也在 `ce(W, ...)` 分支内，非 macOS 平台不生成。
+
+保留这个文件是因为仓库一直带着它，删除它不影响运行。若要向官方对齐，可以删掉。
+
+另需注意：`package.json` 同样在 asar 之外，官方代码用 `C.join(i, "package.json")` 读它的 `version`。这与 `icon.png` 的读取方式相同，但外层传的 `i` 指向 asar 文件，所以官方实际读的是 asar 内部那一份（见 7.1）。
+
+### 7.3 `icon.png.bak` 与 `harmonyos-sync-bridge.js`
+
+**决策：已消除。**
+
+1.12.7 的定制版 asar 里有这两个文件：`harmonyos-sync-bridge.js` 导出 `HmosSyncBridge`（`resolveVaultPath` 读 `obsidian.json`，日志前缀 `[HMOS-SYNC]`），在 asar 内无任何引用；`icon.png.bak` 是官方原图的备份。
+
+改用官方原版 asar 后这两个文件不存在，无需删除动作。
 
 ## 8. 外层引导脚本的五项定制
 
@@ -603,60 +680,35 @@ ArkTS 到 Electron 主进程之间只有 `ExecuteCommand` 一条通道，它只�
 
 升级到 1.14.4 时需要复核：若官方改了 remote 的开启时机（例如改成在创建时开启），这一项可以删掉；若官方引入新的窗口类别，需确认 `getType()` 的过滤条件仍然合适。
 
-## 9. 改动之后剩下的补丁
+## 9. 最终的补丁范围
 
-保留补丁的只剩四项实际改造，加两项文件替换与 `package.json`：
+asar 保持官方原版，补丁只剩一项必须做的：**外层 `package.json` 的 `version`**（见 7.1）。
 
-| 项 | 位置 |
+资源方面只有一个文件放在 asar 之外：`tray.png`（见 7.2）。`icon.png` 直接放在 app 目录，由官方代码按 asar 路径读取。
+
+原先列在这里的四项实际改造已经全部有了归属：
+
+| 项 | 现状 |
 |----|------|
-| help 窗口复用 starter 窗口 | `main.js` 的 help 打开函数 |
-| starter 窗口复用为仓库窗口 | `main.js` 的启动打开函数 |
-| 打开最近仓库时复用 starter 窗口 | `main.js` 的打开函数两个分支 |
-| `[HMOS-FRAME]` 窗口按钮处理 | `app.js` 的 `e.parent===e` 分支 |
-| `package.json` 三个字段 | 打包前写文件 |
-| `icon.png`、`tray.png` | 复制 |
-| `icon.png.bak`、`harmonyos-sync-bridge.js` | 删除 |
+| help 窗口复用 starter 窗口 | 放弃，采用官方行为（3.8） |
+| starter 窗口复用为仓库窗口 | 放弃，采用官方行为（3.8） |
+| 打开最近仓库时复用 starter 窗口 | 放弃，采用官方行为（3.8） |
+| `[HMOS-FRAME]` 窗口按钮处理 | 改为运行时注入（2 节决策表） |
+| `package.json` 三个字段 | 收窄为外层 `version` 一项（7.1） |
+| `icon.png.bak`、`harmonyos-sync-bridge.js` | 已消除。这两个文件在 1.12.7 的定制版 asar 里，改用官方原版后不存在 |
 
-符号解析仍需保留的角色：`starterOpen`、`starterWindow`、`windowTable`、`vaultWindowCreator`、`windowWiring`、`markVaultOpen`、`configSave`、`configRead`、`vaultUrl`、`helpOpen`、`helpWindow`、`auxWindowCreator`、`help`、`electron`、`path`、`fs`、`userData`、`electronMajor`、`vaultTable`。
-
-不再需要的角色：`settingsTabBase`、`settingsTabBaseMode`、`settingContainer`、`notice`、`communityTab`、`i18n`、`aboutI18n`、`thirdPartyI18n`、`platformFlags`、`frameDom`。
-
-`tools/lib/symbols.mjs` 里为设置页解析的那部分可以删除，`tools/hcs-settings-tab.js` 的占位符机制整体去掉，改为可直接在渲染进程加载的独立脚本。
+据此，`tools/build-asar.mjs` 与 `tools/lib/` 的符号解析机制在当前路线下不再需要。它们承载的是构建期打补丁的做法，本文件判为运行时注入的项目已全部移到外层。工具保留作为参考，`tools/README.md` 说明两条路线的关系。
 
 外层引导脚本（第 8 节）不在这张表里，它不因内核升级而改动，是承接上述注入的宿主。
 
-## 10. 实施顺序
+## 10. 剩余事项
 
-按依赖关系分三批，每批单独构建并在设备上验证。
+以下三项与内核升级无关，属于产品层面的取舍，当前状态如下。
 
-**第一批：纯外层，不触碰 asar 内部。**
+**`disable-update` 通道恒返回 `true`。** 设备上的 Electron 是 `5.0.0-Release`，渲染进程侧的 `qy(pf, "28.2.3")` 恒为真，官方的 installer 版本过低提示会触发。覆盖该通道后提示被屏蔽，副作用是「设置 → 关于 → 自动更新」开关恒显示为关闭且拨不动（写入被忽略）。
 
-Electron 版本下限短路（3.7）、`hcs-*` 通道（3.1）、退出相关通道（3.2）、托盘的创建与关窗处理（3.4、3.5）、`before-quit` 标记（3.6）、APK 层 CSS 注入与 HTML 标题（6.3、6.4）、starter 的标题文字（5.1）。
+另一条做法是在 `preload.js` 里同样改写渲染进程的 `process.versions.electron` 到 `29.0.0`，让那条判定为假，该通道即恢复官方行为。这条依赖 `preload.js` 早于 `app.js` 求值，需要一轮实测确认。
 
-这一批全部位于 `web_engine/src/main/resources/resfile/resources/app/main.js` 与它引用的注入脚本内，构建脚本的改动只是删除对应补丁。风险最低，可以逐项验证。
+**`starter` 与 `help` 通道的处理逻辑。** 仓库版本曾把两个通道改为按发送窗口定位并就地加载页面，配合窗口复用使用。窗口复用已放弃（3.8），这项改动失去前提，当前采用官方的全局打开函数。若日后需要「起始窗口变身帮助窗口」这类行为，才需要重新引入。
 
-**第二批：渲染进程的设置页注入。**
-
-`HcsSettingsTab` 的定义与注册（4.1、4.2）、「退出软件」开关（4.3）、「关于」页的三项改动（4.4、4.5、4.8）。
-
-需要先确认注入时机：`window.app` 在 `ready()` 回调里赋值，注入脚本必须在这之后运行。可用的时机是 `dom-ready`，或轮询 `window.app` 出现后再执行。
-
-**第三批：文案与样式注入。**
-
-i18n 的 7 个键（6.1）、zh.txt 的 4 块（6.2）。写法已实测确定：包装 `i18next.t`，在语言包异步加载之前或之后施加都成立。
-
-## 11. 未验证事项
-
-以下几项在实施前需要确认。已由实测排除的项不再列出（设备 Electron 主版本、官方 asar 能否加载、外层注入能否执行、remote 能否开启）。
-
-以下四项已在设备上实测完成，见 `docs/runtime-inject-verification.md` 第 9 节：
-
-- `window.require('obsidian')` 在设备上抛 `Cannot find module 'obsidian'`。官方把模块实例放在闭包里，未注册为 require 可解析的模块。设置页基类只能从原型链回溯（`app.setting.settingTabs[0]`）。
-- 设置页注入后的刷新步骤：包装 `getSettingDefinitions` 后调 `tab.update()` 生效，实测已注册 10 个页签。
-- `[HMOS-FRAME]` 的前置条件：设备上 `ipcRenderer.sendSync("frame")` 返回 `hidden`，该分支被执行；`setWindowButtonVisibility` 接口存在。
-- i18n 包装在真实页面里的表现：`i18next.t 已包装`。
-
-剩下未验证的：
-
-1. **三项窗口复用在运行时有无替代做法。** 见第 9 节。
-2. **`disable-update` 恒返回 true 对「自动更新」开关的影响。** 渲染进程读该通道的返回值为真时，开关显示为关闭；用户拨动开关时也走该通道，但写入被忽略。需要实测确认这是否符合预期（当前自动更新本来就由外层 `queueUpdate` 短路，开关仅影响界面状态）。
+**「关于」页的版本号显示。** 当前经 4.4 的注入改写为 `HarmonyOS-{{version}}`，官方的更新分支与「检查更新」按钮被去掉。这与 1.12.7 的定制一致。若认为应当完全采用官方显示，需要撤销 4.4 与 6.1 中对应的三个键。

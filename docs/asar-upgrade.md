@@ -2,11 +2,15 @@
 
 ## 1. 概述
 
+**本文件的构建路线已停用。** 项目当前使用官方发布版 asar 原样，定制由外层运行时注入施加，判定依据与最终状态见 `docs/asar-customization-runtime.md`，实测记录见 `docs/runtime-inject-verification.md`。
+
+本文件保留的是升级过程中积累的资料，其中仍有参考价值的部分是第 3 节的官方两版差异（文件清单、通道增删、导出接口、设置页重构、许可证模块）与第 4 节的仓库定制清单。第 5 节起的构建脚本说明对应的是构建期打补丁路线。
+
 OHsidian 是 Obsidian 的 HarmonyOS 移植。桌面内核取自官方发布版 `obsidian.asar`，仓库在 1.12.7 的基础上对它做了定制，另外维护一份外层引导脚本 `web_engine/src/main/resources/resfile/resources/app/main.js`。
 
-定制通过构建期打补丁施加：以官方发布版 asar 为输入，用 `tools/build-asar.mjs` 解包、施加补丁、重新打包，得到项目使用的定制 asar。当前目标版本为 1.13.4，产物已部署到设备并验证通过。
+那套定制原先通过构建期打补丁施加：以官方发布版 asar 为输入，用 `tools/build-asar.mjs` 解包、施加补丁、重新打包。1.13.4 的产物曾按此路线生成并部署验证。
 
-仓库内的 asar 由 Git LFS 追踪（`.gitattributes` 中有 `*.asar filter=lfs`），提交路径为 `web_engine/src/main/resources/resfile/resources/app/obsidian.asar`。
+仓库内的 asar 由 Git LFS 追踪（`.gitattributes` 中有 `*.asar filter=lfs`），提交路径为 `web_engine/src/main/resources/resfile/resources/app/obsidian.asar`。当前该文件是官方 1.13.4 原版，md5 `bbae59d36fe60500436a82cb841d5ad6`。
 
 ```mermaid
 flowchart LR
