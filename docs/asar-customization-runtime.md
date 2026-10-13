@@ -629,7 +629,7 @@ i18next.t = function (key, opts) {
 
 **不得把 `.titlebar` 整条隐藏。** 这条元素同时是窗口的唯一拖动区域：官方 CSS 给 `.titlebar` 设了 `-webkit-app-region: drag`。把它 `display: none` 掉，起始窗口与帮助窗口就拖不动了。上面四条改为保留标题栏、只隐去它的内容与背景，拖动区域随标题栏一起保留。
 
-起始窗口与帮助窗口共用 `body.starter`：前者是 `starter.html`，后者是 `help.html`。两个页面写死深色，标题栏右上角的系统三键需要按深色页面配色，见 `WebAbility` 里的 `setDecorButtonStyle`。
+起始窗口与帮助窗口共用 `body.starter`：前者是 `starter.html`，后者是 `help.html`。两个页面写死深色，且创建参数 `maximizable: false`。`WebAbility` 仅在 `useDarkMode` 为真或窗口不可最大化时设置深色装饰按钮配色；这两个窗口获得适合深色页面的浅色三键。普通主窗口与设置窗口不设置装饰按钮配色，继续跟随系统深浅色模式。
 
 注入时机用 `did-start-navigation` 与 `dom-ready`，与 `installFontFaceGuard()` 相同，并在导航后重新注入。
 

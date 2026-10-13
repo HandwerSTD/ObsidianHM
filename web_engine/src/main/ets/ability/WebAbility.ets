@@ -211,12 +211,10 @@ export class WebAbility extends WebBaseAbility {
         LogUtil.warn(TAG, 'Failed to set window decor visible: ' + JSON.stringify(exception));
       }
 
-      // 窗口装饰隐藏时，右上角的系统三键由系统绘制，配色由这里指定。
-      // 不指定时跟随系统颜色模式：起始窗口与帮助窗口写死了深色页面
-      // （starter.html 与 help.html 的 body 都带 theme-dark），系统处于浅色模式时
-      // 三键就成了给浅色背景准备的深色图标，压在深色背景上看不见。
-      // 这两个窗口对应的 Electron 页面 use_dark_mode 为假，不能靠它判定。
-      if (this.useDarkMode || this.hideTitleBar) {
+      // 起始窗口与帮助窗口不可最大化，页面又写死了深色主题；系统浅色模式下
+      // 三键会采用深色图标，因此只为这两类窗口指定适合深色背景的配色。
+      // 普通窗口保留系统默认配色，使三键跟随系统深浅色模式。
+      if (!this.maximizable) {
         let buttonStyle: window.DecorButtonStyle = {
           colorMode: ConfigurationConstant.ColorMode.COLOR_MODE_DARK
         };
