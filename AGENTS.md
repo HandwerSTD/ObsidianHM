@@ -1,3 +1,5 @@
+<!-- Copyright (c) 2026 HandwerSTD -->
+
 # ObsidianHM 项目约定
 
 本文件是仓库级的作业约定。全局约定见 `~/.pi/agent/AGENTS.md`，两者都适用。

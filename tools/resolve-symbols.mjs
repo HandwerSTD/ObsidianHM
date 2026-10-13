@@ -1,3 +1,5 @@
+// Copyright (c) 2026 HandwerSTD
+//
 // 从官方发布版 asar 里定位注入需要的符号。
 //
 // 用法:

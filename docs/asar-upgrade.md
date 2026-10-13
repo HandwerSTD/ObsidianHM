@@ -1,3 +1,5 @@
+<!-- Copyright (c) 2026 HandwerSTD -->
+
 # ObsidianHM asar 升级
 
 ## 1. 概述

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 HandwerSTD
+//
 // 从官方 Obsidian 的 main.js 里解析出定制补丁需要引用的符号。
 //
 // main.js 里的符号都在嵌套作用域内，且名字随版本重排。

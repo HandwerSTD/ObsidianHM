@@ -1,3 +1,5 @@
+// Copyright (c) 2026 HandwerSTD
+//
 // 华为云同步的 12 个 ipcMain 通道。
 //
 // 这套通道由 ArkTS 侧的 CloudSyncAdapter.ets 发起，读写目录取 userData，

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 HandwerSTD
+//
 // 校验 app 目录下的 obsidian.asar 是否为官方发布版原样。
 //
 // 用法：node verify-asar.mjs <asar 路径> [预期版本号]

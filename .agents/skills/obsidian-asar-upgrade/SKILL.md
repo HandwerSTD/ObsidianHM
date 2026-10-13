@@ -3,6 +3,8 @@ name: obsidian-asar-upgrade
 description: 升级 ObsidianHM 内置的 Obsidian 内核版本（升级 asar、跟随官方新版本、换 Obsidian 版本、asar 升级、托盘或华为云同步设置页缺失、设置页白屏、remote is disabled 报错）。项目使用官方发布版 asar 原样、定制由外层运行时注入施加，本技能说明替换 asar 后要复核哪些注入点，以及如何在设备上验证。
 ---
 
+<!-- Copyright (c) 2026 HandwerSTD -->
+
 # Obsidian 内核升级
 
 本仓库把官方 Obsidian 发布版 asar 原样放进 app 目录，全部定制由外层运行时注入施加。asar 内没有任何补丁。

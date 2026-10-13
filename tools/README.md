@@ -1,3 +1,5 @@
+<!-- Copyright (c) 2026 HandwerSTD -->
+
 # tools 目录
 
 **本目录不参与构建。** 项目使用的 asar 是官方发布版原样，定制由外层运行时注入施加，见 `docs/asar-customization-runtime.md`。

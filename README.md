@@ -465,6 +465,7 @@ All rights reserved.
 - [Electron](https://www.electronjs.org) — 跨平台桌面应用框架
 - [HarmonyOS](https://developer.huawei.com/consumer/cn/harmonyos/) — 全场景分布式操作系统
 - [InversifyJS](https://inversify.io) — 强大的 TypeScript IoC 容器
+- [OHSidian](https://github.com/HanversionOvO/OHSidian) — 本项目的原始项目
 
 ---
 

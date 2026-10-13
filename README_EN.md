@@ -465,6 +465,7 @@ This project stands on the shoulders of giants:
 - [Electron](https://www.electronjs.org) — the cross-platform desktop application framework
 - [HarmonyOS](https://developer.huawei.com/consumer/cn/harmonyos/) — the all-scenario distributed operating system
 - [InversifyJS](https://inversify.io) — a powerful TypeScript IoC container
+- [OHSidian](https://github.com/HanversionOvO/OHSidian) — the original project this work is based on
 
 ---
 

@@ -1,5 +1,6 @@
 {
   "name": "ohsidian-tools",
+  "author": "HandwerSTD",
   "private": true,
   "type": "module",
   "description": "ObsidianHM 符号定位工具",
