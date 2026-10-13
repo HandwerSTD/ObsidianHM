@@ -1,7 +1,7 @@
 {
   "app": {
     "bundleName": "com.mikannqaq.obsidian",
-    "vendor": "Mikann",
+    "vendor": "handwer",
     "versionCode": 11404000,
     "versionName": "1.14.4.0",
     "icon": "$media:app_icon",
