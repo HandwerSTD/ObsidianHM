@@ -45,6 +45,7 @@ import { CloudSyncAdapter } from '../adapter/CloudSyncAdapter';
 import { UpdateChecker } from '../adapter/UpdateChecker';
 import { PermissionManagerAdapter } from '../adapter/PermissionManagerAdapter';
 import { ConfigurationConstant } from '@kit.AbilityKit';
+import { writePerfLine } from '../utils/PerfProbe';
 
 const TAG: string = 'WebAbility';
 
@@ -60,6 +61,11 @@ export class WebAbility extends WebBaseAbility {
   }
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam) {
+    // 启动性能打点：ability 进入 onCreate 是本进程内最早可打点的位置。
+    let t0 = Date.now();
+    LogUtil.info('PERF', `onCreate ${t0}`);
+    writePerfLine(this.context.filesDir, `ability onCreate ${t0}`);
+
     super.onCreate(want, launchParam);
 
     this.abilityManager = Inject.get(AbilityManager);

@@ -19,6 +19,13 @@ try {
 		electron.remote = remote;
 	}
 }
+// 启动性能打点：主进程入口开始的毫秒时钟（单调时钟差值才有意义，与 asar 入口共用）。
+let __perfMainStartMs = -1;
+let __perfAsarEntryMs = -1;
+try {
+	__perfMainStartMs = Date.now();
+} catch (e) {}
+
 let {app, protocol, net, Tray, Menu, BrowserWindow} = electron;
 
 // 最小验证探针。obsidian.log 由第 280 行的 log() 写入，而探针需要在其之前执行，
@@ -36,6 +43,10 @@ function probe() {
 		// 探针失败不影响启动
 	}
 }
+
+// 启动性能打点：本文件开始执行的毫秒时钟。probe 定义在 __perfMainStartMs 赋值之后，
+// 因此这条打点只能放在这里。
+probe('[PERF2] file-start', __perfMainStartMs);
 
 // 最小验证：官方 asar 的入口会读 process.versions.electron，主版本低于 18 时弹出
 // 「Manual update required」并退出。该属性只读，改写需用 Object.defineProperty。
@@ -90,6 +101,7 @@ app.on('web-contents-created', function (event, contents) {
 			after = __remoteDiag ? __remoteDiag.isRemoteModuleEnabled(contents) : null;
 		} catch (e) {}
 		probe('WebContents %s 类型 %s：remote 开启前 %s 开启后 %s', contents.id, type, before, after);
+		probe('[PERF2] webcontents-created', contents.id, type, Date.now());
 	} catch (e) {
 		probe('WebContents %s 类型 %s：remote.enable 抛错 %s', contents.id, type, e && e.message ? e.message : String(e));
 	}
@@ -699,7 +711,7 @@ function installTray() {
 	} catch (e) {
 		log('托盘菜单设置失败', e && e.message ? e.message : String(e));
 	}
-	log('托盘已初始化', iconPath);
+	log('托盘已初始化', iconPath, 'epoch', Date.now());
 	return trayIcon;
 }
 
@@ -782,7 +794,7 @@ function injectRenderer(webContents) {
 			continue;
 		}
 		webContents.executeJavaScript(source, true).then(function () {
-			log('注入脚本已施加', name, 'WebContents', webContents.id, '类型', kind);
+			log('注入脚本已施加', name, 'WebContents', webContents.id, '类型', kind, 'epoch', Date.now());
 		}, function (e) {
 			log('注入脚本施加失败', name, 'WebContents', webContents.id, e && e.message ? e.message : String(e));
 		});
@@ -888,6 +900,9 @@ function installDisableUpdate() {
 }
 
 function loadApp(asarPath) {
+	// 启动性能打点：官方 asar 入口即将执行的毫秒时钟。
+	try { __perfAsarEntryMs = Date.now(); } catch (e) {}
+	probe('[PERF2] asar-entry', __perfAsarEntryMs);
 	// Execute asar content
 	let main = path.join(asarPath, 'main.js');
 
@@ -1124,6 +1139,46 @@ app.whenReady().then(function () {
 // Actual startup routine
 setInterval(queueUpdate, 60 * 60 * 1000);
 
+// 多仓库启动收敛。官方启动逻辑（asar 内 main.js 的 We()）会把 obsidian.json 里
+// 每一条 open:true 的仓库都开一个窗口；本设备上仓库窗口串行加载，
+// 每多一个就多约 3 秒白屏，而用户一次只用一个仓库。
+// 因此在 asar 加载前把 open 标志收敛到 ts 最大（最近使用）的那一条。
+// 只在多于一条 open 时才写文件；最近列表本身（vault-list 通道读的完整列表）不受影响。
+(function collapseOpenVaults() {
+	let configPath = path.join(dataPath, 'obsidian.json');
+	let raw;
+	try {
+		raw = fs.readFileSync(configPath, 'utf8');
+	} catch (e) {
+		return; // 文件不存在或不可读：官方按首次启动处理，无需收敛
+	}
+	let config;
+	try {
+		config = JSON.parse(raw);
+	} catch (e) {
+		log('obsidian.json 解析失败，跳过多仓库启动收敛');
+		return;
+	}
+	let vaults = config && config.vaults;
+	if (!vaults || typeof vaults !== 'object') return;
+	let openIds = Object.keys(vaults).filter(function (id) {
+		return vaults[id] && vaults[id].open === true;
+	});
+	if (openIds.length <= 1) return;
+	let latestId = openIds.reduce(function (best, id) {
+		return (vaults[id].ts || 0) > (vaults[best].ts || 0) ? id : best;
+	}, openIds[0]);
+	for (let id of openIds) {
+		if (id !== latestId) delete vaults[id].open;
+	}
+	try {
+		fs.writeFileSync(configPath, JSON.stringify(config));
+		log('多仓库启动收敛：仅保留最近使用仓库的 open 标志', vaults[latestId].path);
+	} catch (e) {
+		log('多仓库启动收敛写回失败', e && e.message ? e.message : String(e));
+	}
+})();
+
 let asarPath = path.join(APP_PATH, 'obsidian.asar');
 let updatedAsarPath = '';
 let updatedAsarVersion = '';
@@ -1169,6 +1224,18 @@ if (!success) {
 	success = loadApp(asarPath);
 	log('Loaded main app package', asarPath);
 }
+
+// 启动性能打点：一次性输出三段毫秒耗时。
+// t0 runBrowser start（hilog，ArkTS 侧）→ t1 本文件开始执行 → t2 官方 asar 入口开始执行 → t3 loadApp 完成。
+// 汇总只写一行，不逐条 append。
+try {
+	let now = Date.now();
+	let asarEntry = __perfAsarEntryMs > 0 ? __perfAsarEntryMs : now;
+	log('[PERF] main-start→file-start', __perfMainStartMs > 0 ? asarEntry - __perfMainStartMs : -1, 'ms；',
+		'asar-entry→loaded', now - asarEntry, 'ms；',
+		'asar-entry', __perfAsarEntryMs > 0 ? '有' : '无标记',
+		'； main-start-epoch', __perfMainStartMs, 'loaded-epoch', now);
+} catch (e) {}
 
 if (!success) {
 	log('Failed to load both app packages.');

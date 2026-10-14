@@ -37,6 +37,8 @@ import JsBindingUtils from '../utils/JsBindingUtils';
 import { MultiInputAdapter } from '../adapter/MultiInputAdapter';
 import { DragParamManager } from '../common/DragParamManager';
 import { window } from '@kit.ArkUI';
+import { common } from '@kit.AbilityKit';
+import { writePerfLine } from '../utils/PerfProbe';
 
 import { CommandType } from '../common/Constants';
 import { IMessageBoxParams } from '../adapter/DialogAdapter';
@@ -92,12 +94,27 @@ class WindowNodeController extends NodeController {
       .onLoad(() => {
         this.setDefaultBounds();
         let vec_args = this.buildArgs();
+        // 启动性能打点：runBrowser 是 Electron 主进程拉起的起点。
+        let t0 = Date.now();
+        this.appendPerfLine(`runBrowser start ${t0}`);
+        LogUtil.info(TAG, `PERF runBrowser start ${t0}`);
         this.config.nativeContext.runBrowser(vec_args);
+        this.appendPerfLine(`runBrowser returned ${Date.now()} (start ${t0})`);
         if (this.config.uri)
           this.config.nativeContext.ExecuteCommand(CommandType.kNewWindow, { url: this.config.uri, is_sync: true });
       })
     node.appendChild(this.xComponent);
     return node;
+  }
+
+  // 启动性能打点：追加一行到 filesDir/obsidian-perf.txt。
+  private appendPerfLine(message: string): void {
+    try {
+      let context = getContext(this) as common.UIAbilityContext;
+      writePerfLine(context.filesDir, message);
+    } catch (err) {
+      LogUtil.warn(TAG, `appendPerfLine failed: ${JSON.stringify(err)}`);
+    }
   }
 
   private setDefaultBounds() {
