@@ -741,6 +741,20 @@ ArkTS 到 Electron 主进程之间只有 `ExecuteCommand` 一条通道，它只�
 
 升级时无需改动。
 
+#### `ExecuteCommand` 不可透传的实测结论
+
+`CommandType` 全部 7 个具名命令：`kNewWindow=0, kNewWebContent=1, kNewWidget=2, kGetWidget=3, kGetLastActiveWidget=4, kOpenURL=5, kAppQuit=6`。其中可能承载消息的三个已在设备上实测（hilog 里 `BrowserAdapter::ExecuteCommand param` 证实命令到达原生桥，参数 `url_len=21`）：
+
+| 命令 | 现象 |
+|------|------|
+| `kOpenURL`（type=5） | 参数被丢弃，无 deeplink 派发、无开窗 |
+| `kNewWebContent`（type=1） | 参数被丢弃，无任何可见效果 |
+| `kNewWidget`（type=2） | 返回空对象，`url` 与 `user_data` 均无效果 |
+
+其余四个无需实测：`kGetWidget`、`kGetLastActiveWidget` 是窗口查询，`kAppQuit` 退出进程，`kNewWindow` 是窗口创建命令，url 只交给 Chromium 页面加载器，主进程 JS 拿不到它（且代价是开新窗口）。
+
+结论：`ExecuteCommand` 的参数在原生桥即被消化，进不了 Electron 主进程的 JS。ArkTS 向 Electron 传递数据只有文件中转一条通路（deeplink 队列与检测更新的两个通道都走它）。此结论已实测排除，后续升级无需再探。
+
 ### 8.4 检测更新的两个通道
 
 与 deeplink 队列同一套文件中转。ArkTS 侧 `UpdateChecker.ets` 拉取远端 `AppScope/app.json5` 的 `versionCode`，与本机比较后写入 `filesDir/update-check.json`；外层每 500 毫秒读一次，`checkedAt` 变化时刷新缓存，`ohsidian-update-status` 通道返回缓存。反方向，关于页的「检查更新」按钮经 `ohsidian-update-check-now` 通道请外层写入 `update-check.now`，ArkTS 侧每 3 秒轮询发现后删除并立即检查一次。
