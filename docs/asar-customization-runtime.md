@@ -172,12 +172,14 @@ app.on("activate", () => { be = !1; BrowserWindow.getAllWindows().length === 0 &
 | `HcsSettingsTab` 注册 | 运行时注入 |
 | 「退出软件」开关 | 运行时注入 |
 | 「关于」页版本项改写 | 运行时注入 |
+| 「关于」页版本行「检查更新」按钮 | 运行时注入，接本仓库的检测逻辑（详见 4.4） |
+| 官方的更新条目（「可以更新」） | 运行时注入，接管 `visible`、`desc` 与按钮点击目标（详见 4.4） |
 | 「贡献作者」条目 | 运行时注入 |
 | 「商用许可证」项隐藏 | 运行时注入（新增，详见 4.6） |
-| 「华为云同步」侧栏入口隐藏 | 运行时注入（新增，详见 4.9） |
+| 「华为云同步」侧栏入口隐藏 | 运行时注入（新增，详见 4.7） |
 | 标题栏文字 | 不处理，采用官方文字 |
 | 5 处 `window.close()` | 不处理，保留官方行为。详见 5.2 |
-| i18n 的 7 个键 | 运行时注入 |
+| i18n 的 6 个键 | 运行时注入 |
 | `i18n/zh.txt` 的 4 块 | 运行时注入 |
 | app.css 的 3 处 | 运行时注入 |
 | 三个 HTML 的标题 | 不处理，采用官方文字 |
@@ -194,13 +196,14 @@ app.on("activate", () => { be = !1; BrowserWindow.getAllWindows().length === 0 &
 | starter 品牌 logo 改写 | 放弃，采用官方行为 |
 | `vault-move` 通道删除 | 已消除 |
 
-外层引导脚本已经承载的五项，在表中单列：
+外层引导脚本已经承载的六项，在表中单列：
 
 | 项目 | 状态 |
 |------|------|
 | 回收站兼容 | 已在外层，不变 |
 | PDF 字体兼容 | 已在外层，不变 |
 | deeplink 队列派发 | 已在外层，不变 |
+| 检测更新的结果读取与触发通道 | 已在外层，详见 `docs/update-check.md` |
 | 自动更新短路 | 已在外层，不变 |
 | remote 开启 | 已在外层，1.14.4 需复核 |
 
@@ -452,9 +455,7 @@ p.length>0&&n.push({type:"group",heading:tie.optionAdvanced(),items:p}),n}
 
 **决策：运行时注入。**
 
-官方这一项在 1.13.4 里包含更新分支与检查更新按钮。仓库版本去掉了更新分支，只保留版本号与 installer 版本。
-
-注入脚本按 `id === "about"` 找到该页对象，包装 `getSettingDefinitions`，用它自己构造的定义中属于版本项的那一项替换为精简版本。识别方式是该项的 `name` 由 `labelVersion` 生成，或者用它在数组中的位置。
+官方这一项的 `render` 里含更新分支与检查更新按钮，由 `updateVersionSetting()` 重建。注入脚本按 `id === "about"` 找到该页对象，包装 `getSettingDefinitions`，接管官方的更新条目（`visible`、`desc`、按钮点击目标），并在版本行的 `render` 之后替换按钮的点击回调。识别方式是条目名（`可以更新` / `Update available`）与 `HarmonyOS-` 前缀。
 
 与 4.5 是同一处改动位置的两个项目，可以合并为一次注入。
 
@@ -541,7 +542,7 @@ var pf=uf,df=hf;
 
 ## 6. 文案与样式
 
-### 6.1 i18n 的 7 个键
+### 6.1 i18n 的 6 个键
 
 **决策：运行时注入。**
 
@@ -591,10 +592,11 @@ i18next.t = function (key, opts) {
 | `setting.about.label-read-changelog` | 空 |
 | `setting.about.label-manual-update-required` | `This is a HarmonyOS port. Original update channels are not available.` |
 | `setting.about.label-disabled-updates` | `Updates are disabled. Running on HarmonyOS.` |
-| `setting.about.button-check-for-updates` | `Updates not available` |
 | `setting.about.option-auto-update-description` | `Automatic updates are disabled on HarmonyOS port.` |
 
 第三行截自 `Up`：`labelReadChangelog` → `label-read-changelog`。
+
+`setting.about.button-check-for-updates` 不覆盖。版本行的「检查更新」按钮已经接上本仓库的检测逻辑（见 `docs/update-check.md`），文案取官方本地化文本。
 
 ### 6.2 `i18n/zh.txt` 的 4 块
 
@@ -609,7 +611,6 @@ i18next.t = function (key, opts) {
 | `setting.about.label-read-changelog` | 空 |
 | `setting.about.label-manual-update-required` | `此版本为 HarmonyOS 移植版，原有更新通道不可用。` |
 | `setting.about.label-disabled-updates` | `更新已禁用（HarmonyOS 移植版）。` |
-| `setting.about.button-check-for-updates` | `更新不可用` |
 | `setting.about.option-auto-update-description` | `HarmonyOS 移植版不支持自动更新。` |
 
 `zh.txt` 有 44 个语言文件与其并列，`zh.txt` 与 `zh-TW.txt` 是其中两个。包装只需覆盖当前语言对应的那一张表；语言切换后 `i18next.language` 随之改变，包装每次取值都重新查表，因此切换语言不需重新施加。
@@ -688,17 +689,18 @@ await l.dialog.showMessageBox(t, {
 
 改用官方原版 asar 后这两个文件不存在，无需删除动作。
 
-## 8. 外层引导脚本的五项定制
+## 8. 外层引导脚本的六项定制
 
-`web_engine/src/main/resources/resfile/resources/app/main.js` 共 804 行，不随官方内核升级变化。它承载五项定制，全部已经是运行时注入，不需要迁移。本节记录每一项的接口与升级时的复核点。
+`web_engine/src/main/resources/resfile/resources/app/main.js` 共 1186 行，不随官方内核升级变化。它承载六项定制，全部已经是运行时注入，不需要迁移。本节记录每一项的接口与升级时的复核点。
 
 | 项 | 位置 | 依赖的官方接口 |
 |----|------|----------------|
-| 回收站兼容 | `installHarmonyTrashCompat()`（163 行） | `electron.shell.trashItem` |
-| PDF 字体兼容 | `FONT_FACE_GUARD_SOURCE` + `installFontFaceGuard()`（488、537 行） | `app.on('browser-window-created')`、`webContents.executeJavaScript` |
-| deeplink 队列派发 | `DEEPLINK_QUEUE_FILE` + `pollDeeplinkQueue()` + `dispatchDeeplink()`（695、697、713、737 行） | `app.on('open-url')` 的监听计数 |
-| 自动更新短路 | `queueUpdate`（293 行） | `updateEvents` 事件 |
-| remote 开启 | `app.on('web-contents-created', ...)`（36 行） | `@electron/remote` 的 `enable()` |
+| 回收站兼容 | `installHarmonyTrashCompat()`（265 行） | `electron.shell.trashItem` |
+| PDF 字体兼容 | `FONT_FACE_GUARD_SOURCE` + `installFontFaceGuard()`（590、735 行） | `app.on('browser-window-created')`、`webContents.executeJavaScript` |
+| deeplink 队列派发 | `DEEPLINK_QUEUE_FILE` + `pollDeeplinkQueue()` + `dispatchDeeplink()`（1015 行起） | `app.on('open-url')` 的监听计数 |
+| 检测更新的结果读取与触发通道 | `UPDATE_CHECK_FILE` + `refreshUpdateCheckStatus()` + `installUpdateStatusChannel()` + `installUpdateCheckNowChannel()`（836、848 行起） | 无。文件名与 `UpdateChecker.ets` 共用，详见 `docs/update-check.md` |
+| 自动更新短路 | `queueUpdate`（395 行） | `updateEvents` 事件 |
+| remote 开启 | `app.on('web-contents-created', ...)`（68 行） | `@electron/remote` 的 `enable()` |
 
 ### 8.1 回收站兼容
 
@@ -739,7 +741,15 @@ ArkTS 到 Electron 主进程之间只有 `ExecuteCommand` 一条通道，它只�
 
 升级时无需改动。
 
-### 8.4 自动更新短路
+### 8.4 检测更新的两个通道
+
+与 deeplink 队列同一套文件中转。ArkTS 侧 `UpdateChecker.ets` 拉取远端 `AppScope/app.json5` 的 `versionCode`，与本机比较后写入 `filesDir/update-check.json`；外层每 500 毫秒读一次，`checkedAt` 变化时刷新缓存，`ohsidian-update-status` 通道返回缓存。反方向，关于页的「检查更新」按钮经 `ohsidian-update-check-now` 通道请外层写入 `update-check.now`，ArkTS 侧每 3 秒轮询发现后删除并立即检查一次。
+
+两个文件名两端各有常量，改名需成对修改。完整说明见 `docs/update-check.md`。
+
+升级时无需改动。
+
+### 8.5 自动更新短路
 
 `queueUpdate` 在开头打印一行日志后立即 `return`，后面的实现成为不可达代码，同时补发 `check-end` 事件。桌面自动更新始终关闭。
 
@@ -747,7 +757,7 @@ ArkTS 到 Electron 主进程之间只有 `ExecuteCommand` 一条通道，它只�
 
 升级时无需改动。
 
-### 8.5 remote 开启
+### 8.6 remote 开启
 
 1.13.4 新增的修复。设置页默认在独立窗口打开（`settingsPopoutWindow:!0`），其渲染进程在建立后立即同步调 `remote.getCurrentWindow()`，而 asar 内部要到 `did-create-window` 才开启 remote，之间有一段空档。在 `web-contents-created` 里立即开启，这个时刻早于该 WebContents 上的任何渲染进程脚本。`getType()` 为 `webview` 的项跳过。
 
@@ -785,4 +795,4 @@ asar 保持官方原版，补丁只剩一项必须做的：**外层 `package.jso
 
 **`starter` 与 `help` 通道的处理逻辑。** 仓库版本曾把两个通道改为按发送窗口定位并就地加载页面，配合窗口复用使用。窗口复用已放弃（3.8），这项改动失去前提，当前采用官方的全局打开函数。若日后需要「起始窗口变身帮助窗口」这类行为，才需要重新引入。
 
-**「关于」页的版本号显示。** 当前经 4.4 的注入改写为 `HarmonyOS-{{version}}`，官方的更新分支与「检查更新」按钮被去掉。这与 1.12.7 的定制一致。若认为应当完全采用官方显示，需要撤销 4.4 与 6.1 中对应的三个键。
+**「关于」页的版本号显示。** 当前经 4.4 的注入改写为 `HarmonyOS-{{version}}`。版本行的按钮已接上本仓库的更新检查（见 `docs/update-check.md`），官方那条 installer 版本过低的更新条目由注入接管为读本仓库的检测结果。

@@ -5,7 +5,7 @@
 // 承载五项：
 //   1. 「华为云同步」设置页（类定义与注册）
 //   2. 「外观」页插入「退出软件」开关
-//   3. 「关于」页追加「贡献作者」
+//   3. 「关于」页追加「贡献作者」、接管官方更新条目与「检查更新」按钮
 //   4. 起始窗口的标题栏文字
 //   5. 窗口按钮可见性与标题栏右边距，以及隐藏官方自绘的三个窗口按钮（[HMOS-FRAME]）
 //
@@ -473,13 +473,189 @@
     return items;
   }
 
-  // 「关于」页同样是混合结构：版本、更新开关等平铺项在前，
+  // 本仓库的发布页。更新条目与版本行的按钮都指向它。
+  var RELEASES_URL = 'https://github.com/HandwerSTD/ObsidianHM/releases';
+
+  // 官方更新条目的两种语言名称。名称由 i18n 键 interface.label-update-available 生成，
+  // 中文界面是「可以更新」，英文界面是「Update available」。
+  var UPDATE_ENTRY_NAMES = ['可以更新', 'Update available'];
+
+  function isUpdateAvailableEntry(entry) {
+    if (!entry || typeof entry.name !== 'string') return false;
+    for (var i = 0; i < UPDATE_ENTRY_NAMES.length; i++) {
+      if (entry.name === UPDATE_ENTRY_NAMES[i]) return true;
+    }
+    return false;
+  }
+
+  // 换掉某一行的按钮点击行为。
+  //
+  // 官方 addButton 造出的按钮组件把回调存在 clickCallback 上，element 上的
+  // click 监听读取的就是它，因此直接赋值即可替换。
+  // 只认带 buttonEl 的组件（ButtonComponent），带 extraSettingsEl 的
+  // ExtraButton 不受影响。
+  // 调用时机必须在原 render 之后：版本行的 render 会 clear() 再重建按钮。
+  function replaceSettingButtonOnClick(setting, handler) {
+    var components = setting && setting.components;
+    if (!components || !components.length) return false;
+    for (var i = 0; i < components.length; i++) {
+      var component = components[i];
+      if (component && component.buttonEl && typeof component.onClick === 'function') {
+        component.clickCallback = handler;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // 更新条目的描述。形态与官方一致：一段文字加「了解更多」链接指向本仓库发布页。
+  // createFragment 由 enhance.js 挂在 window 上，与官方用的同一份实现。
+  function buildUpdateAvailableDesc() {
+    var status = sendSync('ohsidian-update-status');
+    var text = status && status.remoteVersionCode
+      ? '新版本已发布，当前 ' + status.localVersionCode + '，远端 ' + status.remoteVersionCode + '。'
+      : '新版本已发布。';
+    if (typeof window.createFragment !== 'function') return text;
+    return window.createFragment(function (fragment) {
+      fragment.appendText(text + ' ');
+      fragment.createEl('a', {
+        text: '了解更多',
+        attr: { href: RELEASES_URL, target: '_blank', rel: 'noopener' }
+      });
+    });
+  }
+
+  // 刷新「关于」页。用户的检查结果落地后调用，不必重开设置页。
+  // 页签对象的 update() 会重跑 getSettingDefinitions 并重画当前页，
+  // 更新条目的 visible 是函数，随之重新求值。
+  function refreshAboutTab() {
+    var app = window.app;
+    if (!app || !app.setting || !Array.isArray(app.setting.settingTabs)) return false;
+    for (var i = 0; i < app.setting.settingTabs.length; i++) {
+      var tab = app.setting.settingTabs[i];
+      if (tab && tab.id === 'about' && typeof tab.update === 'function') {
+        tab.update();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // 版本行的「检查更新」按钮接真。
+  //
+  // 官方这一行不是静态的：render 存下 Setting 实例后调 updateVersionSetting()，
+  // 后者 clear() 再重建按钮；「自动更新」开关变更后也会再调一次。因此包装
+  // 这个方法本身，而不是只包一次 render：无论从哪条路径重建按钮，都在重建
+  // 之后把点击回调换成 requestUpdateCheck。
+  //
+  // 按钮文案由 i18n 控制。preload.js 不再覆盖 setting.about.button-check-for-updates，
+  // 因此取的是官方本地化文案（「检查更新」/ Check for updates）。
+  //
+  // update 通道返回 update-downloaded 时（官方已下好内核包），按钮由官方换成
+  // 「重新启动」，那种情况不替换。
+  function installVersionButtonHook(tab) {
+    if (tab.__ohsidianVersionHook) return;
+    var original = tab.updateVersionSetting;
+    if (typeof original !== 'function') return;
+    tab.updateVersionSetting = function () {
+      original.apply(this, arguments);
+      if (sendSync('update') === 'update-downloaded') return;
+      replaceSettingButtonOnClick(this.currentVersionSetting, requestUpdateCheck);
+    };
+    tab.__ohsidianVersionHook = true;
+    log('关于页版本行按钮已接入检查更新');
+  }
+
+  // 版本行按钮的点击行为：请外层写触发文件，ArkTS 侧的轮询发现后立即检查一次。
+  // 返回 true 表示请求已交给主进程。
+  function requestUpdateCheck() {
+    var before = sendSync('ohsidian-update-status');
+    var baseline = before ? before.checkedAt : null;
+    if (!sendSync('ohsidian-update-check-now')) {
+      notify('检查更新请求发送失败');
+      return;
+    }
+    notify('正在检查更新...');
+
+    // 结果由 ArkTS 侧写文件、外层每 500ms 读一次，因此这里按秒轮询通道，
+    // 最多 30 次。checkedAt 变化说明结果已经更新。
+    var attempts = 0;
+    var poll = function () {
+      attempts += 1;
+      var status = sendSync('ohsidian-update-status');
+      if (status && status.checkedAt !== baseline) {
+        var refreshed = refreshAboutTab();
+        if (refreshed) {
+          notify(status.hasUpdate ? '发现新版本' : '已是最新版本');
+        } else {
+          notify('检查完成');
+        }
+        return;
+      }
+      if (attempts < 30) {
+        setTimeout(poll, 1000);
+      } else {
+        notify('检查更新超时，请稍后在关于页查看结果');
+      }
+    };
+    setTimeout(poll, 1000);
+  }
+
+  // 「关于」页同样是混合结构：版本、更新、自动更新等平铺项在前，
   // 账号分组在中间，高级分组（含硬件加速、命令行）在最后。
-  // 「贡献作者」放在高级分组之前，与仓库原有的位置一致。
+  // 「贡献作者」放在平铺项的第二位。
   // 商用许可证项在账号分组内，本项目不提供该购买入口，隐藏它。
+  // 官方的更新条目（「可以更新」）不隐藏，改为接管，见下面第 1 步。
   function patchAbout(items) {
     var list = items.items || items;
     if (!Array.isArray(list)) return items;
+
+    // 1. 接管官方更新条目。
+    //
+    // 官方 1.14.4 的「关于」页里，版本项之后就是更新条目（平铺项 index 1）：
+    //   name      interface.label-update-available
+    //   visible   Ene()，第一行拿渲染进程 process.versions.electron 与 "28.2.3"
+    //             比较，本机恒为真，条目因此常显
+    //   desc      createFragment，一句说明加「了解更多」链接
+    //   render    addButton，「下载」按钮 onClick 打开 obsidian.md/download
+    //
+    // 定位用「index 1 + name 校验」，名称按中英两种语言比对；名称不符时再
+    // 全表扫一遍，仍未命中就放弃接管，只记日志，不抛错（官方改了顺序时
+    // 的行为是维持原样，而不是让设置页画不出来）。
+    //
+    // 这一步排在插入「贡献作者」之前：那一步会在 index 1 插入一项，
+    // 之后这个位置就不再是官方更新条目。
+    var updateEntry = null;
+    if (list.length > 1 && isUpdateAvailableEntry(list[1])) {
+      updateEntry = list[1];
+    } else {
+      for (var u = 0; u < list.length; u++) {
+        if (isUpdateAvailableEntry(list[u])) {
+          updateEntry = list[u];
+          break;
+        }
+      }
+    }
+    if (updateEntry) {
+      // visible 换成读本仓库的检测结果。官方本就允许函数形态，
+      // 渲染流程每次都会调用它取值。
+      updateEntry.visible = function () {
+        var status = sendSync('ohsidian-update-status');
+        return !!(status && status.hasUpdate);
+      };
+      updateEntry.desc = buildUpdateAvailableDesc();
+      // 官方 render 保留（按钮文案仍是官方的「下载」），只换点击目标。
+      var officialUpdateRender = updateEntry.render;
+      updateEntry.render = function (setting) {
+        if (typeof officialUpdateRender === 'function') officialUpdateRender.call(this, setting);
+        replaceSettingButtonOnClick(setting, function () {
+          window.open(RELEASES_URL, '_external');
+        });
+      };
+      log('关于页已接管官方更新条目；visible 接 ohsidian-update-status，按钮指向 ' + RELEASES_URL);
+    } else {
+      log('关于页未找到官方更新条目，跳过接管');
+    }
 
     // 隐藏商用许可证项。它在账号分组内，名称由 i18n 键
     // setting.account.option-commercial-license 生成（中文界面下为「商用许可证」）。
@@ -496,7 +672,8 @@
     // 会立刻抛出异常，账号分组里其余条目的渲染也随之中断。
     var hidden = 0;
     var hideEntry = function (entry) {
-      if (!entry || entry.name !== '商用许可证') return;
+      if (!entry) return;
+      if (entry.name !== '商用许可证') return;
       entry.visible = false;
       hidden += 1;
     };
@@ -509,6 +686,7 @@
     }
     if (hidden > 0) log('关于页已隐藏商用许可证项 ' + hidden + ' 处');
 
+    // 2. 「贡献作者」条目，缺位时插入到平铺项的第二位。
     var exists = false;
     for (var i = 0; i < list.length; i++) {
       var entry = list[i];
@@ -520,20 +698,26 @@
       }
       if (entry && entry.name === '贡献作者') exists = true;
     }
-    if (exists) return items;
-    list.splice(1, 0, {
-      name: '贡献作者',
-      desc: '@MikannQAQ @HandwerSTD',
-      render: function (setting) {
-        setting.addButton(function (button) {
-          return button.setButtonText('打开').onClick(function () {
-            window.open('https://github.com/HandwerSTD/ObsidianHM', '_external');
+    if (!exists) {
+      list.splice(1, 0, {
+        name: '贡献作者',
+        desc: '@MikannQAQ @HandwerSTD',
+        render: function (setting) {
+          setting.addButton(function (button) {
+            return button.setButtonText('打开').onClick(function () {
+              window.open('https://github.com/HandwerSTD/ObsidianHM', '_external');
+            });
           });
-        });
-      }
-    });
-    log('关于页已插入贡献作者条目；前四项名=' +
-      list.slice(0, 4).map(function (x) { return x.name; }).join('|'));
+        }
+      });
+      log('关于页已插入贡献作者条目；前四项名=' +
+        list.slice(0, 4).map(function (x) { return x.name; }).join('|'));
+    }
+
+    // 3. 版本行的「检查更新」按钮接真，见 installVersionButtonHook。
+    // patcher 由 patchPage 以页签对象为 this 调用，因此这里能取到页签。
+    installVersionButtonHook(this);
+
     return items;
   }
 

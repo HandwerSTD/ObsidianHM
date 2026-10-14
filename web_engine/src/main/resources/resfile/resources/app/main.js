@@ -831,6 +831,38 @@ function installExitChannels() {
 	log('退出相关通道已注册');
 }
 
+// 检测更新结果的读取通道。渲染进程在「关于」页注入时同步读取一次，
+// 取不到结果（文件不存在或尚未写过的）时返回 null，页面据此隐藏更新条目。
+function installUpdateStatusChannel() {
+	electron.ipcMain.removeAllListeners('ohsidian-update-status');
+	electron.ipcMain.on('ohsidian-update-status', function (event) {
+		event.returnValue = updateCheckStatus;
+	});
+	log('检测更新结果通道已注册，当前结果', updateCheckStatus ? '有' : '无');
+}
+
+// 「检查更新」按钮的触发通道。渲染进程写不了 ArkTS 侧的文件，
+// 因此由这里代写触发文件，ArkTS 的 UpdateChecker 轮询发现后立即跑一次检查。
+// 文件名与 UpdateChecker.ets 的 TRIGGER_FILE_NAME 共用。
+// 两侧约定：写入后由 ArkTS 删除，外层只负责写。
+const UPDATE_CHECK_TRIGGER_FILE = 'update-check.now';
+
+function installUpdateCheckNowChannel() {
+	electron.ipcMain.removeAllListeners('ohsidian-update-check-now');
+	electron.ipcMain.on('ohsidian-update-check-now', function (event) {
+		try {
+			let triggerPath = path.join(dataPath, UPDATE_CHECK_TRIGGER_FILE);
+			fs.writeFileSync(triggerPath, String(Date.now()));
+			log('已写入检查更新触发文件', triggerPath);
+			event.returnValue = true;
+		} catch (e) {
+			log('写入检查更新触发文件失败', e && e.message ? e.message : String(e));
+			event.returnValue = false;
+		}
+	});
+	log('检查更新触发通道已注册');
+}
+
 // 渲染进程的日志转写通道。渲染进程没有写文件的接口，
 // 注入脚本用它把诊断输出写进 obsidian.log（console.log 在设备上不可见）。
 function installLogChannel() {
@@ -1032,9 +1064,43 @@ function pollDeeplinkQueue() {
 pollDeeplinkQueue();
 setInterval(pollDeeplinkQueue, 500);
 
+// 检测更新结果的中转文件。ArkTS 侧（UpdateChecker）拉取远端 versionCode 后写在这里，
+// 渲染进程经 ohsidian-update-status 通道读取。
+// 反方向的请求走 UPDATE_CHECK_TRIGGER_FILE，两端的文件名常量需成对修改。
+// 与 deeplink 队列同为文件中转：渲染进程拿不到 ArkTS 的绑定，只有这个目录是共用的。
+const UPDATE_CHECK_FILE = 'update-check.json';
+
+// 最近一次读到的结果，null 表示还没有可用结果。
+let updateCheckStatus = null;
+// 上一次读到的 checkedAt，用于判断文件是否被重写。
+let updateCheckStamp = null;
+
+function readUpdateCheckStatus() {
+	try {
+		let resultPath = path.join(dataPath, UPDATE_CHECK_FILE);
+		if (!fs.existsSync(resultPath)) return null;
+		return JSON.parse(fs.readFileSync(resultPath, 'utf8'));
+	} catch (e) {
+		log('读取检测更新结果失败', e && e.message ? e.message : String(e));
+		return null;
+	}
+}
+
+function refreshUpdateCheckStatus() {
+	let status = readUpdateCheckStatus();
+	if (!status || status.checkedAt === updateCheckStamp) return;
+	updateCheckStamp = status.checkedAt;
+	updateCheckStatus = status;
+	log('检测更新结果已更新', '远端 versionCode', status.remoteVersionCode,
+		'本机', status.localVersionCode, 'hasUpdate', status.hasUpdate);
+}
+
+refreshUpdateCheckStatus();
+setInterval(refreshUpdateCheckStatus, 500);
+
 installFontFaceGuard();
 
-// 下面四项必须在 asar 加载之后注册。
+// 下面六项必须在 asar 加载之后注册。
 // 其中的 removeAllListeners 用于清掉官方自己注册的同名监听；
 // 官方的注册发生在 loadApp() 调用 module.exports 时，
 // 因此在本位置之前调用会先清空一个不存在的监听，官方随后的注册就变成第二个监听器了。
@@ -1112,6 +1178,8 @@ if (!success) {
 installHcsChannels();
 installExitChannels();
 installLogChannel();
+installUpdateStatusChannel();
+installUpdateCheckNowChannel();
 installDisableUpdate();
 
 queueUpdate();

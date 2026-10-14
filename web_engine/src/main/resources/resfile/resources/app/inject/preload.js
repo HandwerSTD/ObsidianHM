@@ -47,8 +47,7 @@
     'setting.about.label-read-changelog': '',
     'setting.about.label-manual-update-required': 'This is a HarmonyOS port. Original update channels are not available.',
     'setting.about.label-disabled-updates': 'Updates are disabled. Running on HarmonyOS.',
-    'setting.about.option-auto-update-description': 'Automatic updates are disabled on HarmonyOS port.',
-    'setting.about.button-check-for-updates': 'Updates not available'
+    'setting.about.option-auto-update-description': 'Automatic updates are disabled on HarmonyOS port.'
   };
   var ZH = {
     'setting.about.label-version': 'HarmonyOS-{{version}}',
@@ -56,8 +55,7 @@
     'setting.about.label-read-changelog': '',
     'setting.about.label-manual-update-required': '此版本为 HarmonyOS 移植版，原有更新通道不可用。',
     'setting.about.label-disabled-updates': '更新已禁用（HarmonyOS 移植版）。',
-    'setting.about.option-auto-update-description': 'HarmonyOS 移植版不支持自动更新。',
-    'setting.about.button-check-for-updates': '更新不可用'
+    'setting.about.option-auto-update-description': 'HarmonyOS 移植版不支持自动更新。'
   };
 
   function overridesForLanguage() {

@@ -42,6 +42,7 @@ import { WebBaseAbility } from './WebBaseAbility';
 import { WindowStyle, IStyleData, IUpdateStyle } from '../common/WindowStyle';
 import { CommandType } from '../common/Constants';
 import { CloudSyncAdapter } from '../adapter/CloudSyncAdapter';
+import { UpdateChecker } from '../adapter/UpdateChecker';
 import { PermissionManagerAdapter } from '../adapter/PermissionManagerAdapter';
 import { ConfigurationConstant } from '@kit.AbilityKit';
 
@@ -78,6 +79,13 @@ export class WebAbility extends WebBaseAbility {
       });
     } catch (e) {
       LogUtil.warn(TAG, 'CloudSync not available: ' + e);
+    }
+
+    // 检测更新
+    try {
+      Inject.getOrCreate(UpdateChecker).startPolling(this.context);
+    } catch (e) {
+      LogUtil.warn(TAG, 'UpdateChecker not available: ' + e);
     }
   }
 
