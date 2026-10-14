@@ -17,7 +17,7 @@
   - asar 内 package.json 的 author 为 "OHsidian"，官方原版应为 "Obsidian"
 ```
 
-处置：核对来源路径与 md5。1.13.4 的官方原版是 25783388 字节、md5 `bbae59d36fe60500436a82cb841d5ad6`。不要拿此前的定制产物当输入。
+处置：核对来源路径与 md5。1.14.4 的官方原版是 27477966 字节、md5 `a2bde3f94594c1d697492998ea6e20aa`。不要拿此前的定制产物当输入。
 
 ### 新 asar 不生效，界面仍是旧版本
 
@@ -50,7 +50,7 @@ asar 加载失败，或注入脚本抛错。两者的判据不同：
 [INJECT] 无法取得设置页基类，华为云同步页未注册
 ```
 
-基类取法的回退路径依赖 `window.app.setting.settingTabs` 非空。1.13.4 的 `window.require('obsidian')` 在设备上抛 `Cannot find module 'obsidian'`，因此只能走回退路径。
+基类取法的回退路径依赖 `window.app.setting.settingTabs` 非空。`window.require('obsidian')` 在设备上抛 `Cannot find module 'obsidian'`，因此只能走回退路径。
 
 处置：确认 `window.app` 已出现（日志里有 `设置页注入结束`），以及 `settingTabs` 里有元素。官方若改变设置页的注册方式，需要更新 `inject/dom-ready.js` 的 `findSettingsTabBase`。
 

@@ -45,10 +45,10 @@ asar 的纯净度可以随时核验：
 
 ```bash
 node .agents/skills/obsidian-asar-upgrade/scripts/verify-asar.mjs \
-  web_engine/src/main/resources/resfile/resources/app/obsidian.asar 1.13.4
+  web_engine/src/main/resources/resfile/resources/app/obsidian.asar 1.14.4
 ```
 
-1.13.4 的基准：25783388 字节，md5 `bbae59d36fe60500436a82cb841d5ad6`，380 个文件。
+1.14.4 的基准：27477966 字节，md5 `a2bde3f94594c1d697492998ea6e20aa`，396 个文件。
 
 **禁止用构建期打补丁的方式修改 asar。** `tools/` 下只保留符号定位工具，不产出 asar。
 

@@ -10,7 +10,7 @@
 
 ObsidianHM 是 Obsidian 的 HarmonyOS 移植。桌面内核取自官方发布版 `obsidian.asar`，外层引导脚本为 `web_engine/src/main/resources/resfile/resources/app/main.js`。
 
-仓库内的 asar 由 Git LFS 追踪（`.gitattributes` 中有 `*.asar filter=lfs`），提交路径为 `web_engine/src/main/resources/resfile/resources/app/obsidian.asar`。当前该文件是官方 1.13.4 原版，md5 `bbae59d36fe60500436a82cb841d5ad6`。
+仓库内的 asar 由 Git LFS 追踪（`.gitattributes` 中有 `*.asar filter=lfs`），提交路径为 `web_engine/src/main/resources/resfile/resources/app/obsidian.asar`。当前该文件是官方 1.14.4 原版，md5 `a2bde3f94594c1d697492998ea6e20aa`。
 
 ```mermaid
 flowchart LR
@@ -59,7 +59,7 @@ node_modules/.bin/asar extract <asar 文件> <输出目录>
 
 对比压缩后的单行产物时，需要先按分号切片再做行级比较。直接对整行做 `difflib` 会长时间没有输出。
 
-对 200 KB 以上的 `main.js`（例如官方 1.13.4 的 200349 字节版本），压缩后的变量名整体重排会使行级相似度降到 0.07 附近，逐块对齐不可靠，此时改用关键标识符的存在情况与出现次数对比。
+对 200 KB 以上的 `main.js`（例如官方 1.14.4 的压缩版本），压缩后的变量名整体重排会使行级相似度降到 0.07 附近，逐块对齐不可靠，此时改用关键标识符的存在情况与出现次数对比。
 
 ## 3. 官方 1.12.7 与 1.13.4 的差异
 
@@ -75,14 +75,19 @@ node_modules/.bin/asar extract <asar 文件> <输出目录>
 
 两版未删除任何文件。`require` 的模块集合完全相同，都是 `child_process`、`electron`、`fs`、`net`、`original-fs`、`os`、`path`、`url`、`util`。
 
+1.14.4 相对 1.13.4 的同项取值：文件数 396，`main.js` 203702 字节，`app.js` 3942126 字节，`app.css` 668223 字节，`package.json` version `1.14.4`，`ipcMain.on` 通道数 46。`require` 的模块集合多了 `crypto`，`module.exports` 签名仍为两个参数。
+
 ### main.js 的通道增删
 
 | 集合 | 通道 |
 |------|------|
 | 仅 1.12.7 有 | `is-dev` |
 | 仅 1.13.4 有 | `is-closing`、`policy`、`set-language`、`terms` |
+| 仅 1.14.4 有（相对 1.13.4） | `latest-public-version`、`open-file` |
 
 1.13.4 新增 `policy.json` 读取逻辑，用于企业策略配置（`plugins`、`themes`、`snippets`、`sync`、`publish`、`webViewer`、`devTools`、`insider` 八项开关）。HarmonyOS 上 `/etc/<app 名>/policy.json` 不存在，读取失败后走默认值，八项全部关闭。
+
+`latest-public-version` 是 1.14.4 新增的事件监听，外层可用它取远端最新公开版本，`UpdateChecker` 未使用它。`open-file` 是 macOS 上的「用本应用打开文件」，由 `will-finish-launching` 里的 `app.once` 注册，也只在那个分支里有意义。
 
 `adblock` 相关标识符两版都是 14 处，`vault-move` 通道两版都有。
 
@@ -386,7 +391,7 @@ node .agents/skills/obsidian-asar-upgrade/scripts/verify-asar.mjs \
   web_engine/src/main/resources/resfile/resources/app/obsidian.asar <版本号>
 ```
 
-脚本检查 asar 内不含任何本项目字符串、无新增文件、`package.json` 的 `author` 为官方值、`icon.png` 为官方尺寸，并报告体积与文件数。1.13.4 的权威值：25783388 字节，md5 `bbae59d36fe60500436a82cb841d5ad6`，380 个文件。
+脚本检查 asar 内不含任何本项目字符串、无新增文件、`package.json` 的 `author` 为官方值、`icon.png` 为官方尺寸，并报告体积与文件数。1.14.4 的权威值：27477966 字节，md5 `a2bde3f94594c1d697492998ea6e20aa`，396 个文件。
 
 ### 设备验证
 
@@ -403,17 +408,17 @@ node .agents/skills/obsidian-asar-upgrade/scripts/verify-asar.mjs \
 
 ### 已确认结论
 
-- 目标版本 1.13.4 的 asar 已部署到设备并验证通过，字节数与 md5 见第 6 节。
+- 目标版本 1.14.4 的 asar 已部署到设备并验证通过，字节数与 md5 见第 6 节。
 - 定制全部由外层运行时注入施加，改动集中在 `main.js` 与 `inject/` 下的三个脚本。asar 本身逐字节为官方发布版。
 - `tools/lib/` 的符号定位不预设压缩变量名，官方发布新版后无需人工维护对照表。
 - 外层引导脚本整体不随官方内核升级变化，升级时只需同步它的 `version`。
 - 桌面自动更新在外层被关闭，不随 asar 升级变化。
 - 官方两版 `require` 的模块集合相同，asar 对运行时的要求未变。
-- 1.13.4 的设置页与许可证模块都已按新结构改写，`HcsSettingsTab` 通过 `getSettingDefinitions()` 返回定义数组注册。
-- 「关于」页的作者自定义内容（贡献作者、社区许可证、静态许可证弹窗）、installer 版本标识、starter 品牌区、`vault-move` 通道的删除尚未迁移到 1.13.4，不影响升级包的可用性。详见 4.11 节。
-- `is-dev` 通道在 1.13.4 中不存在，两版 `main.js` 与 `app.js` 都已确认。
-- `[HMOS-FRAME]` 的处理位置在 1.13.4 中结构不变，仅类名由 `BD` 变为 `OI`。
-- starter 标题栏相关规则在 1.13.4 中合并到复合选择器，当前由注入直接隐藏 `.starter .titlebar`。
+- 1.14.4 的设置页与许可证模块都已按新结构改写，`HcsSettingsTab` 通过 `getSettingDefinitions()` 返回定义数组注册。
+- 「关于」页的作者自定义内容（贡献作者、社区许可证、静态许可证弹窗）、installer 版本标识、starter 品牌区、`vault-move` 通道的删除尚未迁移，不影响升级包的可用性。详见 4.11 节。
+- `is-dev` 通道在 1.14.4 中不存在，两版 `main.js` 与 `app.js` 都已确认。
+- `[HMOS-FRAME]` 的处理位置在 1.14.4 中结构不变，仅类名由 `BD` 变为 `OI`。
+- starter 标题栏相关规则在当前版本中合并到复合选择器，当前由注入直接隐藏 `.starter .titlebar`。
 - 三条设计约束：remote 在 WebContents 创建时开启；注入代码的局部变量加 `_` 前缀；不覆盖 `window.close`。详细说明见 `AGENTS.md` 第 3 节。
 
 ### 未验证事项
@@ -421,5 +426,4 @@ node .agents/skills/obsidian-asar-upgrade/scripts/verify-asar.mjs \
 - `hcs-*` 通道链路的实际可用性。`hcs-*` 读写的是 Electron 的 `app.getPath("userData")`，ArkTS 侧的 `CloudSyncAdapter` 读写的是 `applicationContext.filesDir`，两者是否为同一目录尚未确认，`checkLoginTrigger` 的调用方也未找到。
 - `CloudSyncAdapterBind.ets` 注册的 8 个绑定（`CloudSync.InitSync`、`SetUserId`、`UploadFile`、`DownloadFile`、`ListFiles`、`DeleteFile`、`GetStatus`、`TriggerLogin`）在 asar 内没有调用方。
 - `xb.insider` 的取值来源，以及 `policy.json` 默认值的完整定义。
-- 1.13.4 的 `app.css` 相对 1.12.7 增加的 34558 字节中，是否还有影响 starter 页面的其它规则。
-- 1.14.4 尚未开始。素材已齐备，位于 `obsidian-extracted/resources/obsidian.asar`，无 tar 安装包。
+- 1.14.4 的 `app.css` 相对 1.12.7 增加的 67810 字节中，是否还有影响 starter 页面的其它规则。

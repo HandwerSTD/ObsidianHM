@@ -19,53 +19,57 @@ node tools/resolve-symbols.mjs --dir  <已解包的官方产物目录>
 
 ```bash
 cd tools && node resolve-symbols.mjs --asar \
-  ~/Download/com.huawei.hmos.browser/obsidian/gz13/obsidian.asar
+  ../web_engine/src/main/resources/resfile/resources/app/obsidian.asar
 ```
 
-1.13.4 的输出共 39 项：
+1.14.4 的输出共 41 项：
 
 ```
 main.js:
   electron               l
   fs                     m
-  path                   C
-  userData               R
-  electronMajor          fo
-  scheme                 et
-  base                   Be
-  help                   ae
-  vaultUrl               tt
-  vaultTable             O
-  vaultWindowCreator     he
+  path                   F
+  userData               v
+  electronMajor          _o
+  scheme                 pt
+  base                   $e
+  help                   le
+  vaultUrl               ht
+  vaultTable             R
+  vaultWindowCreator     se
   windowTable            Y
-  auxWindowCreator       dt
+  windowTableRanked      Y,1
+  auxWindowCreator       Tt
   starterOpen            ye
-  starterWindow          se
-  helpOpen               pt
-  helpWindow             we
-  windowWiring           J
-  windowRegister         he
-  markVaultOpen          lt
-  configSave             ee
-  configRead             ne
-  params                 i,e
-  resourceDir            i
+  starterWindow          pe
+  helpOpen               xt
+  helpWindow             Ce
+  windowWiring           G
+  windowRegister         se
+  markVaultOpen          yt
+  configSave             ae
+  configRead             ee
+  params                 n,e
+  resourceDir            n
   updateEvents           e
+  vaultWindowCloseHandler [object Object]
 
 app.js:
   extend                 v
-  settingsTabBase        i6
-  settingContainer       _b
-  notice                 xw
-  communityTab           oie
-  i18n                   md
-  aboutI18n              Fee
-  thirdPartyI18n         rie
-  platformFlags          td
-  frameDom               OI
-  classCount             893
+  settingsTabBase        F4
+  settingContainer       rT
+  notice                 zT
+  communityTab           Kre
+  i18n                   db
+  aboutI18n              kne
+  thirdPartyI18n         Gre
+  platformFlags          Qy
+  frameDom               QO
+  classCount             914
   settingsTabBaseMode    definitions
 ```
+
+示例里的路径指向仓库内的 asar。
 
 ## 依赖
 

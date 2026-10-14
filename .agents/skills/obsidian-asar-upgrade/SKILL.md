@@ -42,7 +42,7 @@ description: 升级 ObsidianHM 内置的 Obsidian 内核版本（升级 asar、�
 md5sum web_engine/src/main/resources/resfile/resources/app/obsidian.asar
 ```
 
-1.13.4 的基准是 25783388 字节、md5 `bbae59d36fe60500436a82cb841d5ad6`。
+1.14.4 的基准是 27477966 字节、md5 `a2bde3f94594c1d697492998ea6e20aa`、396 个文件。
 
 替换后确认新文件里不含本项目任何字符串，命中数都应为 0：
 
@@ -58,7 +58,11 @@ for s in [b'hcs-login',b'huawei-cloud-sync',b'OHsidian',b'qtray',b'exit-to-tray'
 
 `version` 必须改成目标版本。它同时是外层 `currentBaseVersion` 与 `app.getVersion()` 的来源，启动扫描 userData 时用 `isV2MoreRecent` 判断新 asar 是否被采用。漏改会导致新 asar 不生效。
 
-### 3. 复核注入点
+### 3. 改 AppScope 版本号
+
+`AppScope/app.json5` 的 `versionCode` 与 `versionName` 按 `docs/update-check.md` 第 7 节的编排同步改写。检测更新比的是 `versionCode`，它落后于内核换代会让「可以更新」长期显示为真。
+
+### 4. 复核注入点
 
 asar 换代后压缩变量会重排，但外层与注入脚本都不引用 asar 内部的压缩变量，因此**通常无需改动**。需要复核的是它们依赖的官方接口与结构是否还在。
 
@@ -79,6 +83,7 @@ asar 换代后压缩变量会重排，但外层与注入脚本都不引用 asar 
 | `installDisableUpdate` | 官方有 `disable-update` 通道，需先 `removeAllListeners` 再注册 |
 | `installFontFaceGuard` | 同 `injectRenderer` |
 | `pollDeeplinkQueue` | `app.emit('open-url', ...)` 与 `app.listenerCount('open-url')` |
+| `extendPathEnv` | `process.env` 可直接写 |
 
 **渲染进程（`inject/`）**
 
@@ -101,7 +106,7 @@ import('@electron/asar').then(a => {
 "
 ```
 
-### 4. 检查语法
+### 5. 检查语法
 
 外层与注入脚本都是可以直接用 `node --check` 检查的普通 JavaScript：
 
@@ -114,7 +119,7 @@ done
 
 注意：`node --check` 只验证语法，不验证接口。注入脚本里用到的 `window`、`document`、`electron` 都只在设备上存在，Node 下运行会报未定义，这是正常的。
 
-### 5. 构建与安装
+### 6. 构建与安装
 
 ```bash
 devecocli build
@@ -123,7 +128,7 @@ devecocli run --skip-build --device <设备>
 
 `node --check` 通过不代表构建会通过。ArkTS 只编译 `electron/` 与 `web_engine/src/main/ets/`，js 文件是资源，构建不会检查它们。
 
-### 6. 设备验证
+### 7. 设备验证
 
 ```bash
 hdc shell "tail -n 60 /data/app/el2/100/base/com.mikannqaq.obsidian/files/obsidian.log"
@@ -157,7 +162,7 @@ hdc shell "tail -n 60 /data/app/el2/100/base/com.mikannqaq.obsidian/files/obsidi
 cd tools && node resolve-symbols.mjs --asar <新的官方 asar>
 ```
 
-脚本读取 `main.js` 与 `app.js`，打印全部符号。1.13.4 的输出共 39 项（`electron` 为 `l`、设置页基类为 `i6`、设置项容器为 `_b`、提示消息类为 `xw`、标题栏类为 `OI`）。任一符号判定不唯一时以非零退出并打印全部候选，此时人工确认新结构并更新 `tools/lib/` 里的形状描述。详细说明见 `tools/README.md`。
+脚本读取 `main.js` 与 `app.js`，打印全部符号。1.14.4 的输出共 39 项（`electron` 为 `l`、设置页基类为 `i6`、设置项容器为 `_b`、提示消息类为 `xw`、标题栏类为 `OI`）。任一符号判定不唯一时以非零退出并打印全部候选，此时人工确认新结构并更新 `tools/lib/` 里的形状描述。详细说明见 `tools/README.md`。
 
 ## 参考文件
 

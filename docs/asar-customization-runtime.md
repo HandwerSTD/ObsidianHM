@@ -8,7 +8,7 @@
 
 本文件的判定已完成设备实测验证，实测细节见 `docs/runtime-inject-verification.md`。第 1 节的判定依据是官方内部机制的摘要，完整记录集中在 `docs/obsidian-internals.md`。实测确认：官方原版 asar 能被加载运行，外层注入能执行，remote 能被开启，设备上的 Electron 真实版本为 `5.0.0-Release`。
 
-asar 与官方原版逐字节一致，md5 `bbae59d36fe60500436a82cb841d5ad6`，25783388 字节。
+asar 与官方原版逐字节一致，md5 `a2bde3f94594c1d697492998ea6e20aa`，27477966 字节。
 
 ## 1. 判定依据
 
@@ -35,7 +35,7 @@ asar 自己在渲染进程挂载了这些：
 
 ### 1.3 设置页基类的可达路径
 
-`Setting.prototype.addSettingTab` 的完整实现（1.13.4）：
+`Setting.prototype.addSettingTab` 的完整实现（1.14.4）：
 
 ```
 t.prototype.addSettingTab=function(e){
@@ -94,7 +94,7 @@ Object.defineProperty(process.versions, 'electron', {
 - `Fee.labelVersion({version:td.version})`：Obsidian 版本，来自 `td.version=e.ipcRenderer.sendSync("version")`
 - `Fee.labelInstallVersion({version:td.build})`：installer 版本，来自 `td.build=e.remote.app.getVersion()`，即外层 `package.json` 的 `version`
 
-另有 `Sie="1.13.4"`（Obsidian 版本常量）与 `xie="28.2.3"`（installer 版本比较对象）。
+1.14.4 的对应取值：`goe="1.14.4"`（`goe` 初始为常量，`rw(...)` 在启动时用 `sendSync("version")` 的结果覆盖它）、`moe="28.2.3"`。主进程侧 `I` 的取法不变，仍是 `package.json` 的 `version`，读不到才回退到 `app.getVersion()`。
 
 `qy(a,b)` 的实际语义是：`b` 无法解析为版本时返回 `false`；`a` 无法解析时返回 `true`；其余情况逐位比较，`a` 小于 `b` 时为真，逐位相等时以位数短者为小。拿 `"28.2.3"` 实测：
 
@@ -116,15 +116,15 @@ td.isDesktopApp&&qy(pf,xie)&&(m+="\tUpdate installer: installer version too low,
 qy(pf,xie)&&!electron.ipcRenderer.sendSync("disable-update")?K():(...)
 ```
 
-其中 `pf=uf`，`uf=process.versions.electron`。因此 `qy(pf,xie)` 比较的是 Electron 版本与 `"28.2.3"`。主版本为 28 且补丁号低于 3 时结果为真，主版本不低于 29 时为假。
+其中 `pf=uf`，`uf=process.versions.electron`。因此 `qy(pf,xie)` 比较的是 Electron 版本与 `"28.2.3"`。主版本为 28 且补丁号低于 3 时结果为真，主版本不低于 29 时为假。（上面代码里的 `qy`、`pf`、`xie` 与 `Sie` 是 1.13.4 的标识符，1.14.4 已重排，语义不变。）
 
 `disable-update` 是官方通道，asar `main.js` 里有 `ipcMain.on("disable-update",...)`，读 `D.updateDisabled`。外层可以在 `require(asarPath)` 之后用 `ipcMain.removeAllListeners("disable-update")` 再注册自己的处理，令其恒返回 `true`，从而在层内规避 installer 版本提示。
 
 ### 1.6 官方是否自带托盘
 
-官方 1.13.4 的 `main.js` 里 `new l.Tray` 命中 0 次。托盘完全是本项目的定制。
+官方 1.14.4 的 `main.js` 里 `new l.Tray` 命中 0 次。托盘完全是本项目的定制。
 
-官方全部 380 个文件里搜「Tray」只有两处，都在第三方库中（`lib/prism.min.js`、`lib/pdfjs/pdf.worker.min.mjs`），与托盘无关。`setSkipTaskbar` 与 `statusBar` 也都是 0 次。
+官方全部 396 个文件里搜「Tray」只有两处，都在第三方库中（`lib/prism.min.js`、`lib/pdfjs/pdf.worker.min.mjs`），与托盘无关。`setSkipTaskbar` 为 0 次；`statusBar` 只在 `app.js` 里命中，是界面元素名，与托盘无关。
 
 `ipcMain.on("frame",...)` 在官方与仓库版本里都是 1 处，是官方自带。
 
@@ -206,6 +206,7 @@ app.on("activate", () => { be = !1; BrowserWindow.getAllWindows().length === 0 &
 | 检测更新的结果读取与触发通道 | 已在外层，详见 `docs/update-check.md` |
 | 自动更新短路 | 已在外层，不变 |
 | remote 开启 | 已在外层，1.14.4 需复核 |
+| `PATH` 追加 | 已在外层，详见 8.7 |
 
 ## 3. main.js 的定制
 
@@ -436,7 +437,7 @@ c.createDiv({cls:"titlebar-button mod-close",    onclick: ... e.close()    ...})
 
 **决策：运行时注入。**
 
-1.13.4 的「外观」页用 `getSettingDefinitions()` 返回定义数组，其中一项形如（原文摘录）：
+1.14.4 的「外观」页用 `getSettingDefinitions()` 返回定义数组，其中一项形如（原文摘录）：
 
 ```
 vf()&&p.push({name:md.plugins.translucency.name(),desc:md.plugins.translucency.desc(),
@@ -689,9 +690,9 @@ await l.dialog.showMessageBox(t, {
 
 改用官方原版 asar 后这两个文件不存在，无需删除动作。
 
-## 8. 外层引导脚本的六项定制
+## 8. 外层引导脚本的七项定制
 
-`web_engine/src/main/resources/resfile/resources/app/main.js` 共 1186 行，不随官方内核升级变化。它承载六项定制，全部已经是运行时注入，不需要迁移。本节记录每一项的接口与升级时的复核点。
+`web_engine/src/main/resources/resfile/resources/app/main.js` 共 1186 行，不随官方内核升级变化。它承载七项定制，全部已经是运行时注入，不需要迁移。本节记录每一项的接口与升级时的复核点。
 
 | 项 | 位置 | 依赖的官方接口 |
 |----|------|----------------|
@@ -701,6 +702,7 @@ await l.dialog.showMessageBox(t, {
 | 检测更新的结果读取与触发通道 | `UPDATE_CHECK_FILE` + `refreshUpdateCheckStatus()` + `installUpdateStatusChannel()` + `installUpdateCheckNowChannel()`（836、848 行起） | 无。文件名与 `UpdateChecker.ets` 共用，详见 `docs/update-check.md` |
 | 自动更新短路 | `queueUpdate`（395 行） | `updateEvents` 事件 |
 | remote 开启 | `app.on('web-contents-created', ...)`（68 行） | `@electron/remote` 的 `enable()` |
+| `PATH` 追加 | `extendPathEnv()`（31 行） | `process.env` |
 
 ### 8.1 回收站兼容
 
@@ -776,6 +778,16 @@ ArkTS 到 Electron 主进程之间只有 `ExecuteCommand` 一条通道，它只�
 1.13.4 新增的修复。设置页默认在独立窗口打开（`settingsPopoutWindow:!0`），其渲染进程在建立后立即同步调 `remote.getCurrentWindow()`，而 asar 内部要到 `did-create-window` 才开启 remote，之间有一段空档。在 `web-contents-created` 里立即开启，这个时刻早于该 WebContents 上的任何渲染进程脚本。`getType()` 为 `webview` 的项跳过。
 
 升级到 1.14.4 时需要复核：若官方改了 remote 的开启时机（例如改成在创建时开启），这一项可以删掉；若官方引入新的窗口类别，需确认 `getType()` 的过滤条件仍然合适。
+
+### 8.7 `PATH` 追加
+
+Electron 运行时的 `PATH` 来自系统，设备上实测为 `/data/app/bin:/data/service/hnp/bin:/data/app/bin:/data/service/hnp/bin:/usr/local/bin:/bin:/usr/bin:/system/bin:/vendor/bin`（见 `docs/runtime-inject-verification.md`）。本机安装的命令行工具在 `/storage/Users/currentUser/.harmonybrew/bin`，默认不在其中。
+
+HarmonyOS 限制 `/usr/bin` 不会挂载进应用，`/bin` 与 `/usr/bin` 这两个取值在应用进程里取不到命令，直到 7.0.0.107 都是如此。这个前缀由系统给出，外层不做增删。
+
+`main.js` 在加载 asar 之前把该目录追加到 `process.env.PATH` 的末尾，去重后不做存在性检查。追加写在进程环境上，主进程之后 `require('child_process')` 派生的进程继承同一份 `PATH`。
+
+升级时无需改动。
 
 ## 9. 最终的补丁范围
 

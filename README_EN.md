@@ -14,7 +14,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/HarmonyOS-6.0.2%2822%29-blue?logo=harmonyos" alt="HarmonyOS" />
-  <img src="https://img.shields.io/badge/Obsidian-1.13.4-purple?logo=obsidian" alt="Obsidian" />
+  <img src="https://img.shields.io/badge/Obsidian-1.14.4-purple?logo=obsidian" alt="Obsidian" />
   <img src="https://img.shields.io/badge/ArkTS-API%2022-orange" alt="ArkTS" />
 </p>
 
@@ -46,12 +46,12 @@ At its core, ObsidianHM provides the Electron API using HarmonyOS native capabil
 | Project Info | |
 |-------------|------|
 | App ID | `com.mikannqaq.obsidian` |
-| Version | 1.0.0 (versionCode: 1000000) |
+| Version | 1.14.4.1 (versionCode: 11404001) |
 | Target SDK | HarmonyOS 6.0.2(22) / API 22 |
 | Target Devices | 2in1 (foldable/tablet), Tablet |
 | Language | ArkTS (TypeScript) |
 | Build System | Hvigor |
-| Obsidian Engine | 1.13.4 (`obsidian.asar`, byte-for-byte official release) |
+| Obsidian Engine | 1.14.4 (`obsidian.asar`, byte-for-byte official release) |
 
 ---
 
@@ -59,7 +59,7 @@ At its core, ObsidianHM provides the Electron API using HarmonyOS native capabil
 
 ```mermaid
 flowchart TB
-  A["Obsidian 1.13.4<br/>obsidian.asar (byte-for-byte official)"]
+  A["Obsidian 1.14.4<br/>obsidian.asar (byte-for-byte official)"]
   B["Outer bootstrap script<br/>app/main.js"]
   C["Renderer injection<br/>app/inject/preload.js, dom-ready.js"]
   D["Electron API compatibility<br/>@electron/remote + Node.js runtime"]
@@ -93,7 +93,7 @@ flowchart TB
 
 ### Obsidian Core Experience
 
-- Full Obsidian 1.13.4 note editing and management
+- Full Obsidian 1.14.4 note editing and management
 - Full compatibility with community plugins and themes
 - Creating, managing, and browsing local Vaults
 - Live Markdown preview and editing
@@ -281,7 +281,7 @@ Verify asar purity:
 
 ```bash
 node .agents/skills/obsidian-asar-upgrade/scripts/verify-asar.mjs \
-  web_engine/src/main/resources/resfile/resources/app/obsidian.asar 1.13.4
+  web_engine/src/main/resources/resfile/resources/app/obsidian.asar 1.14.4
 ```
 
 Per-item decisions are recorded in `docs/asar-customization-runtime.md`.

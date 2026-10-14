@@ -4,11 +4,12 @@
 
 本文件记录在升级与注入过程中从官方 asar 里读出的内部机制。这些是理解官方行为、判断改动位置、排查报错所需要的依据，与具体某一项定制无关，因此单独成文。
 
-除特别说明，内容来自官方 1.13.4 的 asar（md5 `bbae59d36fe60500436a82cb841d5ad6`）。1.12.7 的对应差异列在需要对照的地方。
+除特别说明，内容来自官方 1.14.4 的 asar（md5 `a2bde3f94594c1d697492998ea6e20aa`）。1.12.7 与 1.13.4 的对应差异列在需要对照的地方。
 
 - 定制的归属判定：`docs/asar-customization-runtime.md`
 - 内核升级流程：`.agents/skills/obsidian-asar-upgrade/SKILL.md`
 - 1.12.7 与 1.13.4 的逐项差异：`docs/asar-upgrade.md` 第 3 节
+- 1.13.4 升级到 1.14.4 的差异：`docs/asar-upgrade.md` 第 4 节
 
 ## 1. 主进程
 
@@ -22,7 +23,7 @@ module.exports = function (i, e) { ... }
 
 `i` 是 asar 路径，`e` 是外层创建的 `EventEmitter`（外层传入的是 `updateEvents`）。外层 `require(asarPath + '/main.js')` 之后拿到它并调用。
 
-`main.js` 的模块级段落只有函数定义与常量（38 个 `function` 与路径、版本号等常量），占文件前 81%。全部运行时动作都在导出函数里：44 个 `ipcMain.on`、1 个 `ipcMain.handle`、9 个 `app.on`、`app.whenReady`、2 个 `protocol.register` 与 1 个 `protocol.handle`、CLI 的 `listen`，都在这一段内。
+`main.js` 的模块级段落只有函数定义与常量（38 个 `function` 与路径、版本号等常量），占文件前 81%。全部运行时动作都在导出函数里：46 个 `ipcMain.on`、1 个 `ipcMain.handle`、9 个 `app.on`、`app.whenReady`、2 个 `protocol.register` 与 1 个 `protocol.handle`、CLI 的 `listen`，都在这一段内。
 
 这一结构直接决定了覆盖官方通道的时机（见 1.4）：外层 `require(asarPath + '/main.js')` 拿到的只是函数，调用它之前官方一个监听器都还没注册。
 
@@ -36,7 +37,7 @@ child_process   electron   fs   net   original-fs   os   path   url   util
 
 两版完全相同。asar 对运行时的要求没有变化。
 
-### 1.3 44 个 ipcMain 通道
+### 1.3 46 个 ipcMain 通道
 
 ```
 terms              is-quitting        is-closing         desktop-dir
@@ -50,12 +51,13 @@ starter            help               sandbox            context-menu
 request-url        open-url           trash              get-documents-path
 get-sandbox-vault-path                get-default-vault-path
 set-menu           update-menu-items  render-menu        set-icon
-get-icon           create-browser-session
+get-icon           create-browser-session                latest-public-version
+open-file
 ```
 
 另有 `ipcMain.handle("register-cli")` 一个。
 
-与 1.12.7 的差别：仅 1.12.7 有 `is-dev`；仅 1.13.4 有 `is-closing`、`policy`、`set-language`、`terms`。
+与 1.12.7 的差别：仅 1.12.7 有 `is-dev`；仅 1.13.4 有 `is-closing`、`policy`、`set-language`、`terms`；仅 1.14.4 有 `latest-public-version`、`open-file`。
 
 其中几条可以直接复用，外层不必自己实现：
 
@@ -198,15 +200,15 @@ var md = (vd = function (e, t) { return i18next.t(e, t) },
 Up(e) = e.replace(/[A-Z]/g, c => "-" + c.toLowerCase()).replace(/_[0-9]/g, c => "-" + c.substring(1))
 ```
 
-属性访问逐级返回子代理，调用才产生取词。`Up` 把驼峰转成 kebab-case，所以最终交给 `i18next.t` 的键形如 `setting.about.label-version`。（实测脚本见 `~/.tmp/asarwork/probe-i18n-key2.mjs`，取样结果：`md.setting.about.labelVersion({version:"1.13.4"})` → `"setting.about.label-version"`，`md.setting.about.optionAutoUpdateDescription()` → `"setting.about.option-auto-update-description"`。）
+属性访问逐级返回子代理，调用才产生取词。驼峰转 kebab-case 后补一个点，最终交给 `i18next.t` 的键形如 `setting.about.label-version`。（取样结果：`db.setting.about.labelVersion({version:"1.14.4"})` → `"setting.about.label-version"`，`db.setting.about.optionAutoUpdateDescription()` → `"setting.about.option-auto-update-description"`。）
 
 常用存取器：
 
 ```js
-var Fee = md.setting.about, Ree = md.setting.account
+var kne = db.setting.about, Cne = db.setting.account
 ```
 
-1.12.7 用 `O7`（about）与 `F7`（account），1.13.4 改为 `Fee` 与 `Ree`。
+1.12.7 用 `O7`（about）与 `F7`（account），1.13.4 改为 `Fee` 与 `Ree`，1.14.4 为 `kne` 与 `Cne`。
 
 另有 `Kp(e)` 把点分平铺的键表展开为嵌套对象，与取词方向相反。
 
@@ -275,7 +277,7 @@ Object.getPrototypeOf(app.setting.settingTabs[0]).constructor
 
 #### 2.3.3 渲染流程
 
-1.13.4 把设置页从「在 `display()` 里逐项 `addSetting`」改为「实现 `getSettingDefinitions()` 返回定义数组」：
+1.13.4 起把设置页从「在 `display()` 里逐项 `addSetting`」改为「实现 `getSettingDefinitions()` 返回定义数组」：
 
 ```js
 t.prototype.getSettingDefinitions = function () { ... return t }
@@ -283,12 +285,12 @@ t.prototype.getSettingDefinitions = function () { ... return t }
 
 基类的 `update()` 做 `this.settingItems = this.getSettingDefinitions()`，随后渲染。
 
-| 统计项 | 1.12.7 | 1.13.4 |
-|--------|--------|--------|
-| `getSettingDefinitions` | 0 | 23 |
-| `prototype.display = function` | 29 | 11 |
-| `t.push({ name:` | 5 | 44 |
-| `s.addSetting(` | 6 | 1 |
+| 统计项 | 1.12.7 | 1.13.4 | 1.14.4 |
+|--------|--------|--------|--------|
+| `getSettingDefinitions` | 0 | 23 | 23 |
+| `prototype.display = function` | 29 | 11 | 13 |
+| `t.push({ name:` | 5 | 44 | 45 |
+| `s.addSetting(` | 6 | 1 | 24 |
 
 **设置项的取值在 `Setting` 构造期间就被算出并缓存。** 因此包装 `getSettingDefinitions` 之后必须再调一次 `tab.update()`，否则渲染的仍是包装之前的旧结果。
 
@@ -470,7 +472,7 @@ e.parent === e && function (e) {
 | `"28.2.4"` | `false` |
 | `"29.0.0"` | `false` |
 
-asar 内另有 `Sie = "1.13.4"`（Obsidian 版本常量）与 `xie = "28.2.3"`（installer 版本比较对象）。
+asar 内另有 Obsidian 版本常量（`goe`，初值 `"1.14.4"`，启动时被 `sendSync("version")` 的结果覆盖）与 installer 版本比较对象 `"28.2.3"`。
 
 1.13.4 新增 `policy.json` 读取，用于企业策略配置（`plugins`、`themes`、`snippets`、`sync`、`publish`、`webViewer`、`devTools`、`insider` 八项开关）。HarmonyOS 上该文件不存在，读取失败后走默认值，八项全部关闭。
 

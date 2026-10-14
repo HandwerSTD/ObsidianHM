@@ -2,7 +2,7 @@
 
 # 运行时注入的最小验证记录
 
-本文件记录一次实测：把官方原版 1.13.4 asar 放进本项目的外层壳，验证纯运行时注入路线是否成立。全部结论来自设备实测。
+本文件记录一次实测：把官方原版 1.13.4 asar 放进本项目的外层壳，验证纯运行时注入路线是否成立。全部结论来自设备实测。第 8.3 节中的 `PATH` 一段后来在 1.14.4 上复测。
 
 ## 1. 验证目的
 
@@ -48,6 +48,8 @@ function probe() {
 	} catch (e) {}
 }
 ```
+
+`main.js` 在 `probe()` 定义之后把 `process.env.PATH` 与子进程看到的取值各打一行，确认追加生效且能被子进程继承。
 
 第二版探针多了一处：读 `@electron/remote` 自己的 `isRemoteModuleEnabled(contents)`，做开启前后的对比。
 
@@ -193,6 +195,16 @@ HarmonyOS port: desktop auto-update is disabled
 ```
 
 ### 8.3 新确认的结论
+
+**PATH 追加生效，子进程继承同一份取值。** 这一段与本节其余部分不在同一轮，实测运行的是 1.14.4：
+
+```
+[PROBE] PATH 追加前 /data/app/bin:/data/service/hnp/bin:/data/app/bin:/data/service/hnp/bin:/usr/local/bin:/bin:/usr/bin:/system/bin:/vendor/bin
+[PROBE] PATH 追加后 /data/app/bin:/data/service/hnp/bin:/data/app/bin:/data/service/hnp/bin:/usr/local/bin:/bin:/usr/bin:/system/bin:/vendor/bin:/storage/Users/currentUser/.harmonybrew/bin
+[PROBE] 子进程 PATH /data/app/bin:/data/service/hnp/bin:/data/app/bin:/data/service/hnp/bin:/usr/local/bin:/bin:/usr/bin:/system/bin:/vendor/bin:/storage/Users/currentUser/.harmonybrew/bin
+```
+
+`child_process.execSync` 看到的取值与主进程一致，说明环境写在进程上并被派生进程继承。系统给定的取值里 `/usr/bin` 实际不挂载进应用，`hdc shell` 里的 `PATH` 与这里也不相同：设备 shell 是 `shell` 身份（`uid=2000`），应用进程是应用沙箱身份，两者看到的环境本就不一样。
 
 **`window.require('obsidian')` 在设备上抛 `Cannot find module 'obsidian'`。** 完整报错是：
 

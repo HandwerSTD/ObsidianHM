@@ -14,7 +14,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/HarmonyOS-6.0.2%2822%29-blue?logo=harmonyos" alt="HarmonyOS" />
-  <img src="https://img.shields.io/badge/Obsidian-1.13.4-purple?logo=obsidian" alt="Obsidian" />
+  <img src="https://img.shields.io/badge/Obsidian-1.14.4-purple?logo=obsidian" alt="Obsidian" />
   <img src="https://img.shields.io/badge/ArkTS-API%2022-orange" alt="ArkTS" />
 </p>
 
@@ -46,12 +46,12 @@
 | 项目信息 | |
 |---------|------|
 | 应用 ID | `com.mikannqaq.obsidian` |
-| 版本号 | 1.0.0（versionCode: 1000000） |
+| 版本号 | 1.14.4.1（versionCode: 11404001） |
 | 目标 SDK | HarmonyOS 6.0.2(22) / API 22 |
 | 目标设备 | 2in1（折叠屏/平板）、平板 |
 | 开发语言 | ArkTS (TypeScript) |
 | 构建系统 | Hvigor |
-| 内核版本 | Obsidian 1.13.4（`obsidian.asar`，官方发布版原样） |
+| 内核版本 | Obsidian 1.14.4（`obsidian.asar`，官方发布版原样） |
 
 ---
 
@@ -59,7 +59,7 @@
 
 ```mermaid
 flowchart TB
-  A["Obsidian 1.13.4<br/>obsidian.asar（官方发布版原样）"]
+  A["Obsidian 1.14.4<br/>obsidian.asar（官方发布版原样）"]
   B["外层引导脚本<br/>app/main.js"]
   C["渲染进程注入<br/>app/inject/preload.js、dom-ready.js"]
   D["Electron API 兼容层<br/>@electron/remote + Node.js 运行时"]
@@ -93,7 +93,7 @@ flowchart TB
 
 ### Obsidian 核心体验
 
-- 完整的 Obsidian 1.13.4 笔记编辑与管理功能
+- 完整的 Obsidian 1.14.4 笔记编辑与管理功能
 - 所有社区插件和主题的完整兼容
 - 本地 Vault（知识库）的创建、管理与浏览
 - Markdown 实时预览与编辑
@@ -265,7 +265,7 @@ JsBindingUtils.bindFunction('PasteBoardAdapter.ReadImageBuff', readImageBuff);
 
 | 位置 | 承载的改动 |
 |------|------------|
-| `app/main.js` | 主进程侧的全部改动。版本下限短路、remote 提前开启、托盘、关窗最小化到托盘、字体兼容、回收站兼容、deeplink 队列、日志通道 |
+| `app/main.js` | 主进程侧的全部改动。版本下限短路、remote 提前开启、托盘、关窗最小化到托盘、字体兼容、回收站兼容、deeplink 队列、日志通道、`PATH` 追加 |
 | `app/inject/preload.js` | 渲染进程最早时机的注入。i18n 取词包装、日志转写 |
 | `app/inject/dom-ready.js` | 页面就绪后的注入。窗口按钮与右边距、标题栏文字、设置页调整 |
 
@@ -281,7 +281,7 @@ JsBindingUtils.bindFunction('PasteBoardAdapter.ReadImageBuff', readImageBuff);
 
 ```bash
 node .agents/skills/obsidian-asar-upgrade/scripts/verify-asar.mjs \
-  web_engine/src/main/resources/resfile/resources/app/obsidian.asar 1.13.4
+  web_engine/src/main/resources/resfile/resources/app/obsidian.asar 1.14.4
 ```
 
 判断依据逐项记录在 `docs/asar-customization-runtime.md`。
@@ -429,7 +429,7 @@ ObsidianHM/
 
 | 文档 | 内容 |
 |------|------|
-| `docs/obsidian-internals.md` | 官方内部机制：44 个通道、全局对象、i18n 取词、设置页结构、标题栏、平台差异 |
+| `docs/obsidian-internals.md` | 官方内部机制：46 个通道、全局对象、i18n 取词、设置页结构、标题栏、平台差异 |
 | `docs/asar-customization-runtime.md` | 每一项定制的归属判定与依据 |
 | `docs/asar-upgrade.md` | 内核升级流程与两版差异记录 |
 | `docs/runtime-inject-verification.md` | 设备实测记录 |

@@ -41,8 +41,8 @@ flowchart LR
 ```json
 {
   "checkedAt": 1770000000000,
-  "remoteVersionCode": 11404001,
-  "localVersionCode": 11404000,
+  "remoteVersionCode": 11404002,
+  "localVersionCode": 11404001,
   "hasUpdate": true
 }
 ```
@@ -123,6 +123,6 @@ flowchart LR
 | patch | 2 | Obsidian 修订号 |
 | appPatch | 3 | 本项目自身的 bugfix 重发序号 |
 
-当前 `versionCode` 是 `11404000`，按上面的分段读出 `1|14|04|000`，对应 `versionName` `1.14.4.0`。
+当前 `versionCode` 是 `11404001`，按上面的分段读出 `1|14|04|001`，对应 `versionName` `1.14.4.1`。
 
 本项目只改 AppScope 的 `versionCode` 与 `versionName`；`appPatch` 递增时 `versionName` 的第四段同步递增。
