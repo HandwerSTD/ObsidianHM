@@ -1,31 +1,6 @@
-/*
- * Copyright (c) 2023-2025 Haitai FangYuan Co., Ltd.
- * Redistribution and use in source and binary forms, with or without modification,
- * are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice, this list of
- *    conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice, this list
- *    of conditions and the following disclaimer in the documentation and/or other materials
- *    provided with the distribution.
- *
- * 3. Neither the name of the copyright holder nor the names of its contributors may be used
- *    to endorse or promote products derived from this software without specific prior written
- *    permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
- * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
- * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
+// Copyright (c) 2024 Huawei Device Co., Ltd. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
 
 import fileUri from '@ohos.file.fileuri';
 import fs from '@ohos.file.fs';
@@ -39,6 +14,11 @@ import { uniformTypeDescriptor } from '@kit.ArkData';
 import { ContextAdapter } from './ContextAdapter';
 import { PermissionManagerAdapter } from './PermissionManagerAdapter';
 import { SaveAsDialogParams, SelectFileDialogParams } from '../interface/CommonInterface';
+import { ComponentContent, promptAction } from '@kit.ArkUI';
+import LaunchHelper from '../utils/LaunchHelper';
+import { Want } from '@kit.AbilityKit';
+import { MenuItem,InstallationParams, WrappedInstallationBuilder} from '../utils/InstallationPackageDialog';
+import { BusinessError } from '@kit.BasicServicesKit';
 
 const TAG: string = "FilePicker";
 
@@ -63,6 +43,8 @@ export class FilePickerAdapter extends BaseAdapter {
     let DocumentSelectOptions = new picker.DocumentSelectOptions();
     if (params.multi_files) {
       DocumentSelectOptions.maxSelectNumber = FilePickerAdapter.MAX_SELECT_NUMBER;
+    } else {
+      DocumentSelectOptions.maxSelectNumber = 1;
     }
     const context = this.ctxAdapter.getContext();
     let allFileDescription = context.resourceManager.getStringSync(this.allFIleDescriptionId);
@@ -93,9 +75,8 @@ export class FilePickerAdapter extends BaseAdapter {
     documentPicker.select(DocumentSelectOptions)
       .then((selectResult) => {
         try {
-          if (file_access_persist) {
+          if (file_access_persist && selectResult.length !== 0) {
             this.permissionManagerAdapter.fileAccessPersist(selectResult);
-            this.permissionManagerAdapter.saveUris(selectResult);
           }
           selectResult = this.dirFilter(selectResult);
           callback(JSON.stringify(selectResult));
@@ -135,41 +116,59 @@ export class FilePickerAdapter extends BaseAdapter {
     });
   }
 
+  @LogMethod
+  showInstallationPackageDialog(fileName: string, fileSize: string, callback: (continue_download: boolean) => void) {
+    let uiContext = this.ctxAdapter.getActiveProxy().getWindow()?.getUIContext();
+    if (!uiContext) {
+      LogUtil.error(TAG, "Failed to get uiContext!");
+      callback(true);
+      return;
+    }
+
+    const contentNode = new ComponentContent(
+      uiContext,
+      WrappedInstallationBuilder,
+      new InstallationParams(
+        fileName,
+        fileSize,
+        (index: MenuItem) => {
+          switch (index) {
+            case MenuItem.kOpenAppGallery:
+              const want: Want = {
+                bundleName: 'com.huawei.hmsapp.appgallery',
+                abilityName: 'MainAbility',
+                moduleName: 'entry'
+              }
+              LaunchHelper.Launch(this.ctxAdapter.getActiveContext(), want);
+              callback(false)
+              break;
+            case MenuItem.kContinueDownload:
+              callback(true);
+              break;
+            case MenuItem.kCancel:
+            default:
+              callback(false);
+              break;
+          }
+          (uiContext as UIContext).getPromptAction().closeCustomDialog(contentNode)
+        }
+      )
+    )
+
+    uiContext.getPromptAction().openCustomDialog(contentNode, {
+      alignment: DialogAlignment.Center,
+      autoCancel: true
+    } as promptAction.BaseDialogOptions).catch((error: BusinessError) => {
+      LogUtil.error(TAG,`OpenCustomDialog args error code is ${error.code}, message is ${error.message}`);
+    })
+  }
+
   private dirFilter(docs: string[]): string[] {
     let copy: string[] = [];
     docs.forEach((path) => {
       // Convert to uri get systeam path
       let uri = new fileUri.FileUri(path);
-      if (uri.authority === 'media') {
-        let file: fs.File | undefined;
-        let copyFile: fs.File | undefined;
-        try {
-          let filePath = this.ctxAdapter.getContext().tempDir;
-          file = fs.openSync(path, fs.OpenMode.READ_ONLY);
-          copyFile = fs.openSync(filePath + '/' + uri.name, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE);
-          fs.copyFileSync(file.fd, copyFile.fd);
-          copy.push(filePath + '/' + uri.name);
-        } catch (err) {
-          LogUtil.error(TAG, `copy failed: ${JSON.stringify(err)}`);
-        } finally {
-          try {
-            if (file) {
-              fs.closeSync(file);
-            }
-          } catch (err) {
-            LogUtil.error(TAG, `close file failed: ${JSON.stringify(err)}`);
-          }
-          try {
-            if (copyFile) {
-              fs.closeSync(copyFile);
-            }
-          } catch (err) {
-            LogUtil.error(TAG, `close copyFile failed: ${JSON.stringify(err)}`);
-          }
-        }
-      } else {
-        copy.push(uri.path);
-      }
+      copy.push(uri.path);
     });
     return copy;
   }
@@ -192,5 +191,5 @@ export class FilePickerAdapter extends BaseAdapter {
       copy.push(description + "(*." + filters[i].join(";*.") + ")|." + filters[i].join(",."));
     }
     return copy;
-  }  
+  }
 }

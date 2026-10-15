@@ -27,6 +27,10 @@
     {
       "name": "StatusBarEntryAbility_label",
       "value": "应用状态栏"
+    },
+    {
+      "name": "OpenNewWindow_label",
+      "value": "打开新窗口"
     }
   ]
 }

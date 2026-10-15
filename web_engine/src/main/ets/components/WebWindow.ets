@@ -1,31 +1,6 @@
-/*
- * Copyright (c) 2023-2025 Haitai FangYuan Co., Ltd.
- * Redistribution and use in source and binary forms, with or without modification,
- * are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice, this list of
- *    conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice, this list
- *    of conditions and the following disclaimer in the documentation and/or other materials
- *    provided with the distribution.
- *
- * 3. Neither the name of the copyright holder nor the names of its contributors may be used
- *    to endorse or promote products derived from this software without specific prior written
- *    permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
- * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
- * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
+// Copyright (c) 2024 Huawei Device Co., Ltd. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
 
 import { NativeContext, WindowBound } from '../interface/CommonInterface';
 import { AbilityManager } from '../common/AbilityManager';
@@ -37,13 +12,18 @@ import JsBindingUtils from '../utils/JsBindingUtils';
 import { MultiInputAdapter } from '../adapter/MultiInputAdapter';
 import { DragParamManager } from '../common/DragParamManager';
 import { window } from '@kit.ArkUI';
-import { common } from '@kit.AbilityKit';
-import { writePerfLine } from '../utils/PerfProbe';
+import { CommandLineAdapter } from '../common/CommandLineAdapter';
 
 import { CommandType } from '../common/Constants';
 import { IMessageBoxParams } from '../adapter/DialogAdapter';
 import { MessageBox } from '../components/MessageBox';
 import { typeNode as TypedNode, NodeController, FrameNode } from '@ohos.arkui.node';
+
+import { DeviceInfoAdapter } from '../adapter/DeviceInfoAdapter';
+import { NativeThemeAdapter } from '../adapter/NativeThemeAdapter'
+import { CmdArgsHelper } from '../utils/CmdArgsHelper';
+import { writePerfLine } from '../utils/PerfProbe';
+import { common } from '@kit.AbilityKit';
 
 const TAG: string = 'WindowXComponentController';
 
@@ -53,7 +33,7 @@ interface ComponentConfig {
   uri: string,
   nativeContext: NativeContext,
   window?: window.Window,
-  electronRelaunchArgs: string[]
+  cmdArgs: string[]
 }
 
 class WindowXComponentController extends XComponentController {
@@ -72,14 +52,21 @@ class WindowNodeController extends NodeController {
   private xComponentController: XComponentController = new WindowXComponentController();
   private xComponent: TypedNode.XComponent | undefined = undefined;
   private config: ComponentConfig;
+  private deviceInfoAdapter: DeviceInfoAdapter | undefined = undefined;
+  private kBundleInstallDir = 'bundle-installation-dir';
+  private xRootNode: FrameNode | undefined = undefined;
 
   constructor(config: ComponentConfig) {
     super();
     this.config = config;
+    CommandLineAdapter.getInstance().appendArgs(this.config.cmdArgs);
+    CommandLineAdapter.getInstance().appendSwitch(this.kBundleInstallDir, getContext().resourceDir);
+    this.deviceInfoAdapter = Inject.get(DeviceInfoAdapter);
   }
 
   makeNode(uiContext: UIContext): FrameNode | null {
     let node = new FrameNode(uiContext);
+    this.xRootNode = node;
     this.xComponent = TypedNode.createNode(uiContext, "XComponent", {
       type: XComponentType.SURFACE,
       controller: this.xComponentController
@@ -93,13 +80,15 @@ class WindowNodeController extends NodeController {
       .renderFit(RenderFit.TOP_LEFT)
       .onLoad(() => {
         this.setDefaultBounds();
-        let vec_args = this.buildArgs();
-        // 启动性能打点：runBrowser 是 Electron 主进程拉起的起点。
-        let t0 = Date.now();
-        this.appendPerfLine(`runBrowser start ${t0}`);
+        let vec_args = CmdArgsHelper.buildArgs(this.config.uri, this.config.cmdArgs);
+        CmdArgsHelper.preProcessArgs(vec_args);
+        // 本项目定制：启动打点。runBrowser 是 Electron 主进程拉起的起点，
+        // 写入 filesDir/obsidian-perf.txt，与外层 main.js 的 [PERF2] 行按 epoch 毫秒对齐。
+        let t0: number = Date.now();
+        this.appendPerfLine('runBrowser start ' + t0);
         LogUtil.info(TAG, `PERF runBrowser start ${t0}`);
         this.config.nativeContext.runBrowser(vec_args);
-        this.appendPerfLine(`runBrowser returned ${Date.now()} (start ${t0})`);
+        this.appendPerfLine('runBrowser returned ' + Date.now() + ' (start ' + t0 + ')');
         if (this.config.uri)
           this.config.nativeContext.ExecuteCommand(CommandType.kNewWindow, { url: this.config.uri, is_sync: true });
       })
@@ -107,7 +96,8 @@ class WindowNodeController extends NodeController {
     return node;
   }
 
-  // 启动性能打点：追加一行到 filesDir/obsidian-perf.txt。
+  // 本项目定制：追加一行打点到 filesDir/obsidian-perf.txt。
+  // 写入失败不影响启动，诊断用途。
   private appendPerfLine(message: string): void {
     try {
       let context = getContext(this) as common.UIAbilityContext;
@@ -129,14 +119,19 @@ class WindowNodeController extends NodeController {
         height: prop.windowRect.height
       }
 
+      let statusBarHeight = 0;
+      if (this.deviceInfoAdapter?.isNormalWindowMode() && this.config.window) {
+        statusBarHeight = this.config.window.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM).topRect.height;
+      }
       let drawableRect: WindowBound = {
         left: prop.drawableRect.left,
-        top: prop.drawableRect.top,
+        top: prop.drawableRect.top + statusBarHeight,
         width: prop.drawableRect.width,
-        height: prop.drawableRect.height
+        height: prop.drawableRect.height - statusBarHeight
       }
 
-      this.config.nativeContext.OnWindowInitSize(windowRect, drawableRect);
+      let displayId = prop.displayId ?? ConfigData.INVALID_DISPLAY_ID;
+      this.config.nativeContext.OnWindowInitSize(windowRect, drawableRect, displayId);
     }
 
     let state = this.config.window?.getWindowStatus();
@@ -145,14 +140,14 @@ class WindowNodeController extends NodeController {
     }
   }
 
-  private buildArgs(): string[] {
-    let resDir = '--bundle-installation-dir=' + getContext().resourceDir;
-    let vec_args = [resDir];
-    this.config.electronRelaunchArgs.forEach((arg: string) => {
-      vec_args.push(arg);
-    });
-    return vec_args;
+  disposeFrameNode () {
+      if (this.xRootNode !== null && this.xComponent !== null) {
+        this.xRootNode?.removeChild(this.xRootNode?.getChild(0));
+        this.xComponent?.dispose();
+        this.xRootNode?.dispose();
+      }
   }
+
 }
 
 @Component
@@ -160,8 +155,11 @@ export struct WebWindow {
   private static TAG: string = 'WebWindow';
   @LocalStorageLink('xcomponentId') xComponentId: string = '';
   @LocalStorageLink('startUri') startUri: string = '';
+  @LocalStorageLink('appId') appId: string = '';
   @LocalStorageLink('window') window: window.Window | undefined = undefined;
-  @LocalStorageLink('electronRelaunchArgs') electronRelaunchArgs: string[] = [];
+  @LocalStorageLink('cmdArgs') cmdArgs: string[] = [];
+  @LocalStorageLink('statusBarHeight') statusBarHeight: number = 0;
+  @LocalStorageLink('useDarkMode') useDarkMode: boolean = false;
   private XCOMPONENT_NAME: string = 'xcomponent';
   private MODULE_NAME: string = this.xComponentId + ':' + this.XCOMPONENT_NAME;
   private dragDropAdapter: DragDropAdapter = Inject.get(DragDropAdapter);
@@ -169,6 +167,8 @@ export struct WebWindow {
   private abilityManager = Inject.get(AbilityManager);
   private dragParamManager = Inject.get(DragParamManager);
   private nativeContext: NativeContext = JsBindingUtils.getNativeContext(ContextType.kMainProcess);
+  @State private bgColor: Color | string =
+    this.useDarkMode ? NativeThemeAdapter.DARK_BACKGROUND_COLOR : NativeThemeAdapter.LIGHT_BACKGROUND_COLOR;
 
   @State private messageBoxParams: IMessageBoxParams = {
     messageBoxSettings: undefined,
@@ -181,7 +181,7 @@ export struct WebWindow {
     uri: this.startUri,
     nativeContext: this.nativeContext,
     window: this.window,
-    electronRelaunchArgs: this.electronRelaunchArgs
+    cmdArgs: this.cmdArgs
   });
 
   private dialogController: CustomDialogController = new CustomDialogController({
@@ -222,6 +222,7 @@ export struct WebWindow {
 
   aboutToDisappear(): void {
     this.dragParamManager.removeDragContextData(this.xComponentId);
+    this.windowNodeController.disposeFrameNode();
   }
 
   build() {
@@ -253,6 +254,16 @@ export struct WebWindow {
             this.multiInputAdapter.OnPinchEvent("end", this.xComponentId, event);
           })
       )
+      .gesture(
+        GestureGroup(GestureMode.Exclusive,
+          TapGesture({ count: 2})
+            .onAction(() => {
+              // when double tap is triggered, we do nothing, because the event
+              // processing flow in Chromium will converts mouse and touch events to
+              // double tap events.
+            })
+        )
+      )
       .onDragEnter((event?: DragEvent) => {
         LogUtil.info(WebWindow.TAG, 'OhosDrag WebWindow onDragEnter xComponentId:' + this.xComponentId);
         this.dragDropAdapter.dragEnterData(this.xComponentId, (event as DragEvent).getSummary());
@@ -262,7 +273,9 @@ export struct WebWindow {
         let windowY = event?.getWindowY();
         windowX = vp2px(windowX);
         windowY = vp2px(windowY);
-        this.dragDropAdapter.dragMove(this.xComponentId, windowX, windowY);
+        this.dragDropAdapter.dragMove(this.xComponentId,
+                                      windowX,
+                                      windowY - this.statusBarHeight);
       })
       .onDragLeave(() => {
         LogUtil.info(WebWindow.TAG, 'OhosDrag WebWindow onDragLeave xComponentId:' + this.xComponentId);

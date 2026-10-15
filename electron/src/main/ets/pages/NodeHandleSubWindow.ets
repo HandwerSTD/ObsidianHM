@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2025 Haitai FangYuan Co., Ltd.
+ * Copyright (c) 2023-2025 Huawei Device Co., Ltd.
  * Redistribution and use in source and binary forms, with or without modification,
  * are permitted provided that the following conditions are met:
  *
@@ -26,46 +26,18 @@
  * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
-import { injectable } from 'inversify';
-import geoLocationManager from '@ohos.geoLocationManager';
-import BusinessError from "@ohos.base";
-
-import { BaseAdapter } from '../common/BaseAdapter';
-import LogUtil from '../utils/LogUtil';
-import LogMethod from '../common/LogDecorator';
-
-@injectable()
-export class GeolocationAdapter extends BaseAdapter {
-  private static TAG: string = 'GeolocationAdapter';
-
-  @LogMethod
-  startListening(
-    onLocationReport: (location: geoLocationManager.Location) => void,
-    onErrorReport: (errorCode: number) => void
-  ): void {
-    let locationChange = (location: geoLocationManager.Location): void => {
-      if (location) {
-        onLocationReport(location);
-      }
-    };
-    let requestInfo: geoLocationManager.LocationRequest = {
-      'priority': geoLocationManager.LocationRequestPriority.FIRST_FIX,
-      'scenario': geoLocationManager.LocationRequestScenario.UNSET,
-      'timeInterval': 1,
-      'distanceInterval': 0,
-      'maxAccuracy': 0
-    };
-    try {
-      geoLocationManager.on('locationChange', requestInfo, locationChange);
-    } catch (err) {
-      LogUtil.error(GeolocationAdapter.TAG, 'err:' + JSON.stringify(err));
-      onErrorReport((err as BusinessError.BusinessError).code);
+ 
+import { WebNodeHandleSubWindow } from 'web_engine';
+ 
+let subStorage = LocalStorage.getShared();
+@Entry(subStorage)
+@Component
+struct NodeHandleSubWindow {
+  build() {
+    Column() {
+      WebNodeHandleSubWindow()
     }
-  }
-
-  @LogMethod
-  stopListening(): void {
-    geoLocationManager.off('locationChange');
+    .width('100%')
+    .height('100%')
   }
 }

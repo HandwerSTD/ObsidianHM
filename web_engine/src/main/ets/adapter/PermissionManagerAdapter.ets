@@ -1,31 +1,6 @@
-/*
- * Copyright (c) 2023-2025 Haitai FangYuan Co., Ltd.
- * Redistribution and use in source and binary forms, with or without modification,
- * are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice, this list of
- *    conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice, this list
- *    of conditions and the following disclaimer in the documentation and/or other materials
- *    provided with the distribution.
- *
- * 3. Neither the name of the copyright holder nor the names of its contributors may be used
- *    to endorse or promote products derived from this software without specific prior written
- *    permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
- * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
- * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
+// Copyright (c) 2024 Huawei Device Co., Ltd. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
 
 import { injectable, inject } from 'inversify';
 import abilityAccessCtrl from '@ohos.abilityAccessCtrl';
@@ -91,6 +66,9 @@ export class PermissionManagerAdapter extends BaseAdapter {
     ]],
     ['screen_capture', [
       'ohos.permission.CUSTOM_SCREEN_CAPTURE',
+    ]],
+    ['distributed_datasync', [
+      'ohos.permission.DISTRIBUTED_DATASYNC',
     ]]
   ]);
   private atManager: abilityAccessCtrl.AtManager;
@@ -98,7 +76,7 @@ export class PermissionManagerAdapter extends BaseAdapter {
   private ctxAdapter: ContextAdapter;
   private isInitialized: boolean = false;
   private appLabelId: number = 0;
-  private bundleName: string = 'com.huawei.ohos_electron';
+  private bundleName: string = 'com.mikannqaq.obsidian';
   private bundleFlags = bundleManager.BundleFlag.GET_BUNDLE_INFO_WITH_APPLICATION |
                         bundleManager.BundleFlag.GET_BUNDLE_INFO_WITH_METADATA;
 
@@ -196,7 +174,7 @@ export class PermissionManagerAdapter extends BaseAdapter {
       if (code === ACTIVATE_SUCCESS) {
         this.isInitialized = true;
       } else {
-        LogUtil.error(TAG, 'No URI required for activation or activation failed');
+        LogUtil.error(TAG, '[CPM20251222017870] No URI required for activation or activation failed');
       }
     });
   }
@@ -245,7 +223,7 @@ export class PermissionManagerAdapter extends BaseAdapter {
   @LogMethod
   public activateFileAccessPersist(uris: string[], callback: (code: number) => void) {
     if (uris.length === 0) {
-      LogUtil.error(TAG,'No URI required to activate');
+      LogUtil.error(TAG,'[CPM20251222017870] No URI required to activate');
       callback(EMPTY_ARRAY);
       return;
     }
@@ -260,9 +238,10 @@ export class PermissionManagerAdapter extends BaseAdapter {
     });
     fileShare.activatePermission(policies).then(() => {
       callback(ACTIVATE_SUCCESS);
+      LogUtil.error(TAG, `[CPM20251222017870] activeFileAccessPersist ok`);
     }).catch((err: BusinessError<Array<fileShare.PolicyErrorResult>>) => {
       callback(err.code);
-      LogUtil.error(TAG, `activeFileAccessPersist failed: ${JSON.stringify(err)}`);
+      LogUtil.error(TAG, `[CPM20251222017870] activeFileAccessPersist failed: ${JSON.stringify(err)}`);
     });
   }
 
@@ -306,6 +285,9 @@ export class PermissionManagerAdapter extends BaseAdapter {
       case "pasteboard":
         this.openPasteboardPermissionConfirm(activeContext, confirmParams);
         break;
+      case "screen_capture":
+        this.openScreenshotPermissionConfirm(activeContext, confirmParams);
+        break;
       default:
         break;
     }
@@ -319,6 +301,15 @@ export class PermissionManagerAdapter extends BaseAdapter {
   private openPasteboardPermissionConfirm(activeContext: Context, pasteboardConfirmParams: ConfirmParams) {
     pasteboardConfirmParams.title = activeContext.resourceManager.getStringSync($r("app.string.pasteBoard_dialog_title").id);
     pasteboardConfirmParams.content = activeContext.resourceManager.getStringSync($r("app.string.pasteBoard_dialog_content").id);
+    pasteboardConfirmParams.label = activeContext.resourceManager.getStringSync(this.appLabelId);
+    pasteboardConfirmParams.content = pasteboardConfirmParams.content.replace("label", pasteboardConfirmParams.label);
+    pasteboardConfirmParams.confirm = activeContext.resourceManager.getStringSync($r("app.string.dialog_confirm_button").id);
+    pasteboardConfirmParams.cancel = activeContext.resourceManager.getStringSync($r("app.string.dialog_cancel_button").id);
+  }
+
+  private openScreenshotPermissionConfirm(activeContext: Context, pasteboardConfirmParams: ConfirmParams) {
+    pasteboardConfirmParams.title = activeContext.resourceManager.getStringSync($r("app.string.screenshot_dialog_title").id);
+    pasteboardConfirmParams.content = activeContext.resourceManager.getStringSync($r("app.string.screenshot_dialog_content").id);
     pasteboardConfirmParams.label = activeContext.resourceManager.getStringSync(this.appLabelId);
     pasteboardConfirmParams.content = pasteboardConfirmParams.content.replace("label", pasteboardConfirmParams.label);
     pasteboardConfirmParams.confirm = activeContext.resourceManager.getStringSync($r("app.string.dialog_confirm_button").id);

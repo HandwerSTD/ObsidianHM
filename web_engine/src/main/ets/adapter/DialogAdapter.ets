@@ -1,47 +1,26 @@
-/*
- * Copyright (c) 2023-2025 Haitai FangYuan Co., Ltd.
- * Redistribution and use in source and binary forms, with or without modification,
- * are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice, this list of
- *    conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice, this list
- *    of conditions and the following disclaimer in the documentation and/or other materials
- *    provided with the distribution.
- *
- * 3. Neither the name of the copyright holder nor the names of its contributors may be used
- *    to endorse or promote products derived from this software without specific prior written
- *    permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
- * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
- * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
+// Copyright (c) 2024 Huawei Device Co., Ltd. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
 
 import fs from '@ohos.file.fs';
-import fileUri from '@ohos.file.fileuri';
 import LogUtil from '../utils/LogUtil';
 import LogMethod from '../common/LogDecorator';
 import picker from '@ohos.file.picker';
+import { promptAction } from '@kit.ArkUI';
 
 import { AbilityManager } from '../common/AbilityManager';
 import { BaseAdapter } from '../common/BaseAdapter';
 import { BusinessError } from '@ohos.base';
+import { fileUri } from '@kit.CoreFileKit';
 import { image } from '@kit.ImageKit';
 import { inject, injectable } from 'inversify';
 import { ContextAdapter } from './ContextAdapter';
-import { PermissionManagerAdapter } from './PermissionManagerAdapter';
+import { VerifyLog } from '../utils/VerifyLog';
 
 const TAG: string = 'Dialog';
+const DEFAULT_BUTTON_LABEL: string = 'OK';
+const PRIMARY_BUTTON_COLOR: string = '#FF0A59F7';
+const NORMAL_BUTTON_COLOR: string = '#000000';
 
 interface IMessageBoxSettings {
   parent_id: number,
@@ -92,19 +71,17 @@ export class DialogAdapter extends BaseAdapter {
   private static DEFAULT_DIR: string = 'file://docs/storage/Users/currentUser';
   private static MAX_SELECT_NUMBER: number = 500;
   private ctxAdapter: ContextAdapter;
-  private permissionManagerAdapter: PermissionManagerAdapter;
   private allFIleDescriptionId: number = $r("app.string.upload_all_file_description").id;
 
-  constructor(@inject(ContextAdapter) ctxAdapter: ContextAdapter,
-    @inject(PermissionManagerAdapter) permissionManagerAdapter: PermissionManagerAdapter) {
+  constructor(@inject(ContextAdapter) ctxAdapter: ContextAdapter) {
     super();
     this.ctxAdapter = ctxAdapter;
-    this.permissionManagerAdapter = permissionManagerAdapter;
   }
 
   @LogMethod
   showMessageBox(settings: string, buffer: ArrayBuffer, width: number, height: number,  callback: (button_id: number, checkbox_checked: boolean) => void) {
     LogUtil.info(TAG, 'messagebox settings ' + settings);
+    VerifyLog.info('dialog showMessageBox settings=' + settings);
     let icon: image.PixelMap | undefined = this.convertImagePixelMap(width, height, buffer);
     let boxSettings: IMessageBoxSettings = JSON.parse(settings);
     let params: IMessageBoxParams = {
@@ -113,10 +90,78 @@ export class DialogAdapter extends BaseAdapter {
       callback: callback
     };
     LogUtil.error(TAG, 'parentId ' + boxSettings.parent_id);
-    let parentId = boxSettings.parent_id === -1 ? 1 : boxSettings.parent_id;
+    if (boxSettings.parent_id === -1) {
+      this.showParentlessMessageBox(boxSettings, callback);
+      return;
+    }
+
+    let parentId = boxSettings.parent_id;
     let messageBoxManager: MessageBoxData | undefined = this.abilityManager.getMessageBox(parentId);
-    messageBoxManager?.setMessageBoxParams(params);
-    messageBoxManager?.dialogController.open();
+    if (!messageBoxManager) {
+      LogUtil.error(TAG, 'showMessageBox failed, parent message box manager not found: ' + parentId);
+      callback(boxSettings.cancel_id, boxSettings.checkbox_checked);
+      return;
+    }
+    messageBoxManager.setMessageBoxParams(params);
+    messageBoxManager.dialogController.open();
+    VerifyLog.info('dialog in-window MessageBox opened, parentId=' + parentId +
+      ' title=' + boxSettings.title);
+  }
+
+  private showParentlessMessageBox(boxSettings: IMessageBoxSettings,
+    callback: (button_id: number, checkbox_checked: boolean) => void) {
+    VerifyLog.info('dialog parentless promptAction.showDialog title=' + boxSettings.title +
+      ' message=' + this.getParentlessPromptMessage(boxSettings));
+    let isCallbackCalled = false;
+    const safeCallback = (buttonId: number) => {
+      if (isCallbackCalled) {
+        return;
+      }
+      isCallbackCalled = true;
+      callback(buttonId, boxSettings.checkbox_checked);
+    };
+
+    promptAction.showDialog({
+      title: boxSettings.title,
+      message: this.getParentlessPromptMessage(boxSettings),
+      buttons: this.getParentlessPromptButtons(boxSettings)
+    }).then(data => {
+      if (typeof data.index === 'number' && data.index >= 0) {
+        safeCallback(data.index);
+      } else {
+        safeCallback(boxSettings.cancel_id);
+      }
+    }).catch((err: BusinessError) => {
+      LogUtil.error(TAG, 'show parentless message box failed with err: ' + JSON.stringify(err));
+      safeCallback(boxSettings.cancel_id);
+    });
+  }
+
+  private getParentlessPromptButtons(boxSettings: IMessageBoxSettings): promptAction.Button[] {
+    const buttonLabels = boxSettings.buttons.length > 0 ? boxSettings.buttons : [DEFAULT_BUTTON_LABEL];
+    const primaryIndex = boxSettings.default_id >= 0 && boxSettings.default_id < buttonLabels.length ?
+      boxSettings.default_id : 0;
+    return buttonLabels.map((button: string, index: number): promptAction.Button => {
+      return {
+        text: button,
+        color: index === primaryIndex ? PRIMARY_BUTTON_COLOR : NORMAL_BUTTON_COLOR,
+        primary: index === primaryIndex
+      };
+    });
+  }
+
+  private getParentlessPromptMessage(boxSettings: IMessageBoxSettings): string {
+    let messages: string[] = [];
+    if (boxSettings.message.length > 0) {
+      messages.push(boxSettings.message);
+    }
+    if (boxSettings.detail.length > 0) {
+      messages.push(boxSettings.detail);
+    }
+    if (boxSettings.checkbox_label.length > 0) {
+      LogUtil.warn(TAG, 'parentless message box uses promptAction.showDialog, checkbox UI is not supported.');
+    }
+    return messages.join('\n\n');
   }
 
   @LogMethod
@@ -143,7 +188,7 @@ export class DialogAdapter extends BaseAdapter {
 
   @LogMethod
   showOpenDialog(settings: string, callback: (filePaths: string[], canceled: boolean) => void) {
-    LogUtil.info(TAG, 'ShowOpenDialog ' + settings);
+    LogUtil.info(TAG, '[CPM20251222017870] ShowOpenDialog ' + settings);
     let DocumentSelectOptions = new picker.DocumentSelectOptions();
     let dialogSettings: IOpenDialogSettings = JSON.parse(settings);
     if (dialogSettings.properties_open_directory) {
@@ -162,35 +207,29 @@ export class DialogAdapter extends BaseAdapter {
       DocumentSelectOptions.fileSuffixFilters = [allFileDescription + "|.*"];
     }
     let dirAndFile: string[] = this.handleDefaultPath(dialogSettings.default_path);
-    LogUtil.info(TAG, 'showOpenDialog dirAndFile: ' + `${dirAndFile[0]}-${dirAndFile[1]}`);
+    LogUtil.info(TAG, '[CPM20251222017870] showOpenDialog dirAndFile: ' + `${dirAndFile[0]}-${dirAndFile[1]}`);
     DocumentSelectOptions.defaultFilePathUri = dirAndFile[0];
     let documentPicker = new picker.DocumentViewPicker();
     documentPicker.select(DocumentSelectOptions).then((DocumentSelectResult: Array<string>) => {
-      LogUtil.info(TAG, 'DocumentViewPicker.select successfully, DocumentSelectResult uri: ' + JSON.stringify(DocumentSelectResult));
+      LogUtil.info(TAG, '[CPM20251222017870] DocumentViewPicker.select successfully, DocumentSelectResult uri: ' + JSON.stringify(DocumentSelectResult));
       if (DocumentSelectResult.length === 0) {
         callback([], true);
       } else {
-        let filePaths = this.convertUrisToPaths(DocumentSelectResult);
-        // 持久化文件夹访问权限，下次打开无需重复授权
-        if (dialogSettings.properties_open_directory) {
-          this.permissionManagerAdapter.fileAccessPersist(DocumentSelectResult);
-          this.permissionManagerAdapter.saveUris(DocumentSelectResult);
-        }
-        callback(filePaths, false);
+        callback(DocumentSelectResult, false);
       }
     }).catch((err: BusinessError) => {
-      LogUtil.error(TAG, 'DocumentViewPicker.select failed with err: ' + JSON.stringify(err));
+      LogUtil.error(TAG, '[CPM20251222017870] DocumentViewPicker.select failed with err: ' + JSON.stringify(err));
       callback([], true);
     });
   }
 
   @LogMethod
   showSaveDialog(settings: string, callback: (filePath: string, canceled: boolean) => void) {
-    LogUtil.info(TAG, 'ShowSaveDialog ' + settings);
+    LogUtil.info(TAG, '[CPM20251222017870] ShowSaveDialog ' + settings);
     let dialogSettings: IOpenDialogSettings = JSON.parse(settings);
     let DocumentSaveOptions = new picker.DocumentSaveOptions();
     let dirAndFile: string[] = this.handleDefaultPath(dialogSettings.default_path);
-    LogUtil.info(TAG, 'ShowSaveDialog dirAndFile: ' + `${dirAndFile[0]}-${dirAndFile[1]}`);
+    LogUtil.info(TAG, '[CPM20251222017870] ShowSaveDialog dirAndFile: ' + `${dirAndFile[0]}-${dirAndFile[1]}`);
     DocumentSaveOptions.defaultFilePathUri = dirAndFile[0];
     DocumentSaveOptions.newFileNames = [`${dirAndFile[1]}`];
     const context = this.ctxAdapter.getContext();
@@ -202,15 +241,14 @@ export class DialogAdapter extends BaseAdapter {
     }
     let documentPicker = new picker.DocumentViewPicker();
     documentPicker.save(DocumentSaveOptions).then((DocumentSaveResult: Array<string>) => {
-      LogUtil.info(TAG, 'DocumentViewPicker.save successfully, DocumentSaveResult uri: ' + JSON.stringify(DocumentSaveResult));
+      LogUtil.info(TAG, '[CPM20251222017870] DocumentViewPicker.save successfully, DocumentSaveResult uri: ' + JSON.stringify(DocumentSaveResult));
       if (DocumentSaveResult.length === 0) {
         callback('', true);
       } else {
-        let filePaths = this.convertUrisToPaths(DocumentSaveResult);
-        callback(filePaths[0], false);
+        callback(DocumentSaveResult[0], false);
       }
     }).catch((err: BusinessError) => {
-      LogUtil.error(TAG, 'DocumentViewPicker.save failed with err: ' + JSON.stringify(err));
+      LogUtil.error(TAG, '[CPM20251222017870] DocumentViewPicker.save failed with err: ' + JSON.stringify(err));
       callback('', true);
     });
   }
@@ -219,24 +257,24 @@ export class DialogAdapter extends BaseAdapter {
     let dirAndFile: string[] = [DialogAdapter.DEFAULT_DIR, ''];
     try {
       let path: string = default_path.trim();
+      let uri = fileUri.getUriFromPath(path);
       let exist = fs.accessSync(path);
+      let fileNameIndex: number = path.lastIndexOf('/');
+      let fileUriIndex: number = uri.lastIndexOf('/');
+      let dirPath: string = path.slice(0, fileNameIndex);
+      let dirUri: string = uri.slice(0, fileUriIndex);
+      let fileName: string = path.slice(fileNameIndex + 1);
       if (!exist) {
-        let fileNameIndex: number = path.lastIndexOf('/');
-        let dirPath: string = path.slice(0, fileNameIndex);
-        let fileName: string = path.slice(fileNameIndex + 1);
         if (fs.accessSync(dirPath)) {
-          dirAndFile[0] = DialogAdapter.PATH_PREFIX + dirPath;
+          dirAndFile[0] = dirUri;
         }
         dirAndFile[1] = fileName;
       } else {
         let stat = fs.statSync(path);
         if (stat.isDirectory()) {
-          dirAndFile[0] = DialogAdapter.PATH_PREFIX + path;
+          dirAndFile[0] = uri;
         } else if (stat.isFile()) {
-          let fileNameIndex: number = path.lastIndexOf('/');
-          let dirPath: string = path.slice(0, fileNameIndex);
-          let fileName: string = path.slice(fileNameIndex + 1);
-          dirAndFile[0] = DialogAdapter.PATH_PREFIX + dirPath;
+          dirAndFile[0] = dirUri;
           dirAndFile[1] = fileName;
         }
       }
@@ -252,20 +290,6 @@ export class DialogAdapter extends BaseAdapter {
       copy.push(filter.name + "(*." + filter.extensions.join(";*.") + ")|." + filter.extensions.join(",."));
     }
     return copy;
-  }
-
-  private convertUrisToPaths(uris: string[]): string[] {
-    let filePaths: string[] = [];
-    uris.forEach((uri) => {
-      try {
-        let uriObj = new fileUri.FileUri(uri);
-        filePaths.push(uriObj.path);
-      } catch (err) {
-        LogUtil.error(TAG, `convertUrisToPaths failed for uri ${uri}: ${JSON.stringify(err)}`);
-        filePaths.push(uri);
-      }
-    });
-    return filePaths;
   }
 
   private convertImagePixelMap(width: number, height: number, buff: ArrayBuffer): image.PixelMap | undefined {

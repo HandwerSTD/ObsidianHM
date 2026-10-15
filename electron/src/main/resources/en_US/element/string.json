@@ -27,6 +27,10 @@
     {
       "name": "StatusBarEntryAbility_label",
       "value": "Application status bar"
+    },
+    {
+      "name": "OpenNewWindow_label",
+      "value": "OpenNewWindow"
     }
   ]
 }

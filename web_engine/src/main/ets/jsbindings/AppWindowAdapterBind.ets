@@ -1,37 +1,13 @@
-/*
- * Copyright (c) 2023-2025 Haitai FangYuan Co., Ltd.
- * Redistribution and use in source and binary forms, with or without modification,
- * are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice, this list of
- *    conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice, this list
- *    of conditions and the following disclaimer in the documentation and/or other materials
- *    provided with the distribution.
- *
- * 3. Neither the name of the copyright holder nor the names of its contributors may be used
- *    to endorse or promote products derived from this software without specific prior written
- *    permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
- * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
- * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
+// Copyright (c) 2024 Huawei Device Co., Ltd. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
 
 import JsBindingUtils from '../utils/JsBindingUtils';
 import Inject from '../common/InjectModule';
 import lazy { AppWindowAdapter } from '../adapter/AppWindowAdapter';
-import type { NewWindowParam, PointCoordinate, WindowBound, ILoginInfo } from '../interface/CommonInterface';
+import type { NewWindowParam, PointCoordinate, WindowBound, ILoginInfo, NotificationAdapterImage } from '../interface/CommonInterface';
 import { window } from '@kit.ArkUI';
+import { NodeContent } from '@kit.ArkUI';
 
 function implAppWindowAdapter(): AppWindowAdapter {
   return Inject.getOrCreate(AppWindowAdapter);
@@ -71,13 +47,12 @@ function restore(id: number) {
 
 function setBounds(id: number,
                    hasFrame: boolean,
-                   bounds: WindowBound,
-                   callback: () => void) {
-  implAppWindowAdapter().setBounds(id, hasFrame, bounds, callback);
+                   bounds: WindowBound) {
+  implAppWindowAdapter().setBounds(id, hasFrame, bounds);
 }
 
-function setEnabled(enable: boolean, id: number) {
-  implAppWindowAdapter().setEnabled(enable, id);
+function setEnabled(enable: boolean, id: number): boolean {
+  return implAppWindowAdapter().setEnabled(enable, id);
 }
 
 function setWindowLimits(minWidth: number,
@@ -156,6 +131,10 @@ function setResizable(id: number, resizable: boolean) {
   implAppWindowAdapter().setResizable(id, resizable);
 }
 
+function setFocusable(id: number, focusable: boolean) {
+  implAppWindowAdapter().setFocusable(id, focusable);
+}
+
 function startWindowMoving(id: number) {
   implAppWindowAdapter().startWindowMoving(id);
 }
@@ -173,9 +152,9 @@ function getWindowStatus(id: number): window.WindowStatusType {
   return implAppWindowAdapter().getWindowStatus(id);
 }
 
-function shiftWindowEvent(sourceId: number, targetId: number,
+function shiftWindowMouseEvent(sourceId: number, targetId: number,
                           callback: (result: boolean) => void) {
-  implAppWindowAdapter().shiftWindowEvent(sourceId, targetId, callback);
+  implAppWindowAdapter().shiftWindowMouseEvent(sourceId, targetId, callback);
 }
 
 function startWindowMovingWithOffset(id: number, offsetX: number, offsetY: number) {
@@ -196,6 +175,27 @@ function showHuaweiQuickLogin(
 
 function getWindowId(id: number): number {
   return implAppWindowAdapter().getWindowId(id);
+}
+
+function shiftWindowTouchEvent(sourceId: number, targetId: number,
+  fingerId: number, callback: (result: boolean) => void) {
+  implAppWindowAdapter().shiftWindowTouchEvent(sourceId, targetId, fingerId, callback);
+}
+
+function bind(id: string, callback: (nodeContent: NodeContent | undefined) => void) {
+  implAppWindowAdapter().bind(id, callback);
+}
+
+function unbind(id: string, callback: (nodeContent: NodeContent | undefined) => void) {
+  implAppWindowAdapter().unbind(id, callback);
+}
+
+function setWindowShadow(id: number, hasShadow: boolean) {
+  implAppWindowAdapter().setWindowShadow(id, hasShadow);
+}
+
+function SetWindowIcon(id: number, icon: NotificationAdapterImage) {
+  implAppWindowAdapter().SetWindowIcon(id, icon);
 }
 
 export class AppWindowAdapterBind {
@@ -228,14 +228,20 @@ export class AppWindowAdapterBind {
     JsBindingUtils.bindFunction("AppWindow.SetContentProtection", setContentProtection);
     JsBindingUtils.bindFunction("AppWindow.SetMovable", setMovable);
     JsBindingUtils.bindFunction("AppWindow.SetResizable", setResizable);
+    JsBindingUtils.bindFunction("AppWindow.SetFocusable", setFocusable);
     JsBindingUtils.bindFunction("AppWindow.StartWindowMoving", startWindowMoving);
     JsBindingUtils.bindFunction("AppWindow.GetWindowsByCoordinate", getWindowsByCoordinate);
     JsBindingUtils.bindFunction("AppWindow.SetWindowModal", setWindowModal);
     JsBindingUtils.bindFunction("AppWindow.GetWindowStatus", getWindowStatus);
-    JsBindingUtils.bindFunction("AppWindow.ShiftWindowEvent", shiftWindowEvent);
     JsBindingUtils.bindFunction("AppWindow.StartWindowMovingWithOffset", startWindowMovingWithOffset);
     JsBindingUtils.bindFunction("AppWindow.GetOriginWindowIds", getOriginWindowIds);
     JsBindingUtils.bindFunction("AppWindow.ShowHuaweiQuickLogin", showHuaweiQuickLogin);
     JsBindingUtils.bindFunction("AppWindow.GetWindowId", getWindowId);
+    JsBindingUtils.bindFunction("AppWindow.ShiftWindowMouseEvent", shiftWindowMouseEvent);
+    JsBindingUtils.bindFunction("AppWindow.ShiftWindowTouchEvent", shiftWindowTouchEvent);
+    JsBindingUtils.bindFunction("AppWindow.Bind", bind);
+    JsBindingUtils.bindFunction("AppWindow.UnBind", unbind);
+    JsBindingUtils.bindFunction("AppWindow.SetWindowShadow", setWindowShadow);
+    JsBindingUtils.bindFunction("AppWindow.SetWindowIcon", SetWindowIcon);
   }
 }

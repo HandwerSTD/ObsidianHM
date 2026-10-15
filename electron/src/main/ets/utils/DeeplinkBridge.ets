@@ -30,6 +30,7 @@
 import { Want } from '@kit.AbilityKit';
 import fs from '@ohos.file.fs';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { VerifyLog } from 'web_engine';
 
 const DOMAIN_ID: number = 0x0000;
 const TAG: string = 'OHSidianDeeplink';
@@ -51,15 +52,18 @@ export class DeeplinkBridge {
   static extractAndStrip(want: Want): string | undefined {
     let raw = want.uri;
     hilog.info(DOMAIN_ID, TAG, '收到 want, uri = %{public}s', raw === undefined ? '(未设置)' : raw);
+    VerifyLog.info('want arrived, uri=' + (raw === undefined ? '(未设置)' : raw));
     if (typeof raw !== 'string') {
       return undefined;
     }
     let url = raw.trim();
     if (!url.startsWith(SCHEME_PREFIX)) {
       hilog.info(DOMAIN_ID, TAG, 'uri 不是 obsidian 链接, 忽略');
+      VerifyLog.info('want uri not obsidian scheme, ignored');
       return undefined;
     }
     want.uri = '';
+    VerifyLog.info('want uri stripped, url=' + url);
     return url;
   }
 
@@ -81,9 +85,11 @@ export class DeeplinkBridge {
       fs.closeSync(fd);
       fd = -1;
       hilog.info(DOMAIN_ID, TAG, '已入队 %{public}s 到 %{public}s', url, queuePath);
+      VerifyLog.info('deeplink enqueued url=' + url);
       return true;
     } catch (err) {
       hilog.error(DOMAIN_ID, TAG, '入队失败 %{public}s, %{public}s', url, JSON.stringify(err));
+      VerifyLog.error('deeplink enqueue FAILED url=' + url + ' ' + JSON.stringify(err));
       return false;
     } finally {
       if (fd >= 0) {

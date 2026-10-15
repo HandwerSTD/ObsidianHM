@@ -34,6 +34,7 @@ import { fileIo } from '@kit.CoreFileKit';
 
 import { BaseAdapter } from '../common/BaseAdapter';
 import LogUtil from '../utils/LogUtil';
+import { VerifyLog } from '../utils/VerifyLog';
 
 const TAG: string = 'UpdateChecker';
 
@@ -128,6 +129,7 @@ export class UpdateChecker extends BaseAdapter {
       }
       fileIo.unlinkSync(triggerPath);
       LogUtil.info(TAG, '发现用户触发的检查更新请求，立即检查一次');
+      VerifyLog.info('update-check trigger file seen');
       this.checkOnce(context);
     } catch (err) {
       LogUtil.error(TAG, `处理 ${triggerPath} 失败: ${JSON.stringify(err)}`);
@@ -169,8 +171,11 @@ export class UpdateChecker extends BaseAdapter {
       LogUtil.info(TAG, `远端 versionCode ${remoteVersionCode}，本机 ${localVersionCode}，` +
         `hasUpdate ${result.hasUpdate}`);
       this.writeResult(context, result);
+      VerifyLog.info('update-check remote=' + remoteVersionCode + ' local=' + localVersionCode +
+        ' hasUpdate=' + result.hasUpdate);
     } catch (err) {
       LogUtil.error(TAG, `检测更新失败: ${JSON.stringify(err)}`);
+      VerifyLog.error('update-check FAILED ' + JSON.stringify(err));
     } finally {
       if (request) {
         request.destroy();

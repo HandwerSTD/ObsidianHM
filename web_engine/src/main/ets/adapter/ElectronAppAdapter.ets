@@ -1,56 +1,32 @@
-/*
- * Copyright (c) 2023-2025 Haitai FangYuan Co., Ltd.
- * Redistribution and use in source and binary forms, with or without modification,
- * are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice, this list of
- *    conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice, this list
- *    of conditions and the following disclaimer in the documentation and/or other materials
- *    provided with the distribution.
- *
- * 3. Neither the name of the copyright holder nor the names of its contributors may be used
- *    to endorse or promote products derived from this software without specific prior written
- *    permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
- * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
- * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
+// Copyright (c) 2024 Huawei Device Co., Ltd. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
 
 import { injectable, inject } from 'inversify';
 import bundleManager from '@ohos.bundle.bundleManager';
 import { BusinessError } from '@ohos.base';
-import display from '@ohos.display';
 import I18n from '@ohos.i18n';
-import { common, Want } from '@kit.AbilityKit';
+import { autoStartupManager, common, Want } from '@kit.AbilityKit';
 
 import { AbilityManager } from '../common/AbilityManager';
 import { BaseAdapter } from '../common/BaseAdapter';
 import { ContextAdapter } from './ContextAdapter';
+import { deviceInfo } from '@kit.BasicServicesKit';
 import { notificationManager } from '@kit.NotificationKit';
 import LogUtil from '../utils/LogUtil';
 import LogMethod from '../common/LogDecorator';
+import { distributedDeviceManager } from '@kit.DistributedServiceKit';
 
 const TAG: string = 'ElectronApp';
 
 @injectable()
 export class ElectronAppAdapter extends BaseAdapter {
   private abilityManager: AbilityManager;
-  private bundleName: string = 'com.huawei.ohos_electron';
+  private bundleName: string = 'com.mikannqaq.obsidian';
   private bundleFlags = bundleManager.BundleFlag.GET_BUNDLE_INFO_WITH_APPLICATION |
                         bundleManager.BundleFlag.GET_BUNDLE_INFO_WITH_METADATA;
   private ctxAdapter: ContextAdapter;
-  private fontSizeScale: number = 1.0;
+  private appProvisionType: string = "release";
 
   constructor(
     @inject(ContextAdapter) ctxAdapter: ContextAdapter,
@@ -62,6 +38,7 @@ export class ElectronAppAdapter extends BaseAdapter {
     try {
       let data = bundleManager.getBundleInfoForSelfSync(this.bundleFlags);
       this.bundleName = data.name;
+      this.appProvisionType = data.appInfo.appProvisionType;
     } catch (err) {
       let message = (err as BusinessError).message;
       LogUtil.error(TAG, `getBundleInfoForSelfSync failed.: ${message}`);
@@ -87,7 +64,8 @@ export class ElectronAppAdapter extends BaseAdapter {
 
   @LogMethod
   getSystemLocale(): string {
-    return I18n.System.getSystemLocale();
+    // I18n.System.getSystemLocale() 自 API 20 起 deprecated, 改用 getSystemLocaleInstance()。
+    return I18n.System.getSystemLocaleInstance().toString();
   }
 
   @LogMethod
@@ -121,7 +99,7 @@ export class ElectronAppAdapter extends BaseAdapter {
       abilityName: 'EntryAbility'
     };
     want.parameters = {
-      'electronRelaunchArgs' : args,
+      'cmdArgs' : args,
       'electronRelaunchExecPath': execPath
     };
     try {
@@ -145,8 +123,29 @@ export class ElectronAppAdapter extends BaseAdapter {
   }
 
   @LogMethod
-  getFontSizeScale(): number {
-    return this.fontSizeScale;
+  setLoginItemSettings(): void {
+    let context = this.ctxAdapter.getActiveContext() as common.UIAbilityContext;
+    context.startAbility({
+      bundleName: 'com.huawei.hmos.settings',
+      abilityName: 'com.huawei.hmos.settings.MainAbility',
+      uri: 'pc_app_setup_settings'
+    });
+  }
+
+  @LogMethod
+  getLoginItemSettings(callback: Function): void {
+    if (deviceInfo.sdkApiVersion >= 21) {
+      autoStartupManager.getAutoStartupStatusForSelf().then((isAutoStartup: boolean) => {
+        LogUtil.info(TAG, `getAutoStartupStatusForSelf success, isAutoStartup: ${JSON.stringify(isAutoStartup)}.`);
+        callback(isAutoStartup);
+      }).catch((err: BusinessError) => {
+        LogUtil.error(TAG, `getAutoStartupStatusForSelf failed, err code: ${err.code}, err msg: ${err.message}.`);
+        callback(false);
+      });
+    } else {
+      LogUtil.error(TAG, `getAutoStartupStatusForSelf requires a higher SDK version.`);
+      callback(false);
+    }
   }
 
   @LogMethod
@@ -159,19 +158,23 @@ export class ElectronAppAdapter extends BaseAdapter {
   }
 
   @LogMethod
-  getAvailableArea(displayId: number, callback: (availArea: display.Rect) => void) {
-    let displayClass: display.Display = display.getDisplayByIdSync(displayId);
-    if (!displayClass) {
-      LogUtil.error(TAG, 'getDisplayByIdSync failed.');
-      callback({ left: 0, top: 0, width: 0, height: 0 });
-      return;
+  getPackagePublicInfo(): string {
+    LogUtil.info(TAG, `getPackagePublicInfo success: ${this.appProvisionType}.`);
+    return this.appProvisionType;
+  }
+
+  @LogMethod
+  getHostName(): string {
+    try {
+      let context = this.ctxAdapter.getActiveContext() as common.UIAbilityContext;
+      let dmInstance = distributedDeviceManager.createDeviceManager(context.abilityInfo.bundleName);
+      let deviceName: string = dmInstance.getLocalDeviceName();
+      LogUtil.info(TAG, 'local device name: ' + JSON.stringify(deviceName));
+      return deviceName;
+    } catch (err) {
+      let e: BusinessError = err as BusinessError;
+      LogUtil.error(TAG, 'getLocalDeviceName errCode:' + e.code + ',errMessage:' + e.message);
+      return '';
     }
-    displayClass.getAvailableArea().then((availArea) => {
-      LogUtil.error(TAG, 'getAvailableArea success. Area: ' + JSON.stringify(availArea));
-      callback(availArea);
-    }).catch((err: BusinessError) => {
-      LogUtil.error(TAG, 'getAvailableArea failed. Cause: ' + JSON.stringify(err));
-      callback({ left: 0, top: 0, width: 0, height: 0 });
-    });
   }
 };

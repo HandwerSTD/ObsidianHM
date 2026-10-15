@@ -1,36 +1,10 @@
-/*
- * Copyright (c) 2023-2025 Haitai FangYuan Co., Ltd.
- * Redistribution and use in source and binary forms, with or without modification,
- * are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice, this list of
- *    conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice, this list
- *    of conditions and the following disclaimer in the documentation and/or other materials
- *    provided with the distribution.
- *
- * 3. Neither the name of the copyright holder nor the names of its contributors may be used
- *    to endorse or promote products derived from this software without specific prior written
- *    permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
- * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
- * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
+// Copyright (c) 2024 Huawei Device Co., Ltd. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
 
 import JsBindingUtils from '../utils/JsBindingUtils';
 import Inject from "../common/InjectModule";
 import lazy { ElectronAppAdapter } from '../adapter/ElectronAppAdapter';
-import display from '@ohos.display';
 
 function implElectronAppAdapter(): ElectronAppAdapter {
   return Inject.getOrCreate(ElectronAppAdapter);
@@ -60,16 +34,24 @@ function openApplicationInfoEntry(): void {
   return implElectronAppAdapter().openApplicationInfoEntry();
 }
 
-function getFontSizeScale(): number {
-  return implElectronAppAdapter().getFontSizeScale();
+function setLoginItemSettings(): void {
+  return implElectronAppAdapter().setLoginItemSettings();
+}
+
+function getLoginItemSettings(callback: Function): void {
+  return implElectronAppAdapter().getLoginItemSettings(callback);
 }
 
 function setBadgeCount(count: number): void {
   return implElectronAppAdapter().setBadgeCount(count);
 }
 
-function getAvailableArea(displayId: number, callback: (availArea: display.Rect) => void) {
-  implElectronAppAdapter().getAvailableArea(displayId, callback);
+function getPackagePublicInfo(): string {
+  return implElectronAppAdapter().getPackagePublicInfo();
+}
+
+function getHostName(): string {
+  return implElectronAppAdapter().getHostName();
 }
 
 export class ElectronAppAdapterBind {
@@ -80,8 +62,10 @@ export class ElectronAppAdapterBind {
     JsBindingUtils.bindFunction("ElectronApp.GetFileIcon", getFileIcon);
     JsBindingUtils.bindFunction("ElectronApp.Relaunch", relaunch);
     JsBindingUtils.bindFunction("ElectronApp.OpenApplicationInfoEntry", openApplicationInfoEntry);
-    JsBindingUtils.bindFunction("ElectronApp.GetFontSizeScale", getFontSizeScale);
+    JsBindingUtils.bindFunction("ElectronApp.SetLoginItemSettings", setLoginItemSettings);
+    JsBindingUtils.bindFunction("ElectronApp.GetLoginItemSettings", getLoginItemSettings);
     JsBindingUtils.bindFunction("ElectronApp.SetBadgeCount", setBadgeCount);
-    JsBindingUtils.bindFunction("ElectronApp.GetAvailableArea", getAvailableArea);
+    JsBindingUtils.bindFunction("ElectronApp.GetPackagePublicInfo", getPackagePublicInfo);
+    JsBindingUtils.bindFunction("ElectronApp.GetHostName", getHostName);
   }
 }

@@ -1,40 +1,50 @@
-/*
- * Copyright (c) 2023-2025 Haitai FangYuan Co., Ltd.
- * Redistribution and use in source and binary forms, with or without modification,
- * are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice, this list of
- *    conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice, this list
- *    of conditions and the following disclaimer in the documentation and/or other materials
- *    provided with the distribution.
- *
- * 3. Neither the name of the copyright holder nor the names of its contributors may be used
- *    to endorse or promote products derived from this software without specific prior written
- *    permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
- * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
- * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
+// Copyright (c) 2024 Huawei Device Co., Ltd. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
 
 import adapter from 'libadapter.so';
+import common from '@ohos.app.ability.common';
 import { ContextType } from '../common/Constants';
 import { NativeContext } from '../interface/CommonInterface';
+import { VerifyLog } from './VerifyLog';
 
 export default class JsBindingUtils {
   private static currentContext: NativeContext;
 
   private static currentType: ContextType;
+
+  private static pathsPushed: boolean = false;
+
+  /**
+   * 把沙箱路径推给 native 侧。
+   *
+   * 新一版 libadapter 的 ContextPathAdapter 不再反向问 ArkTS 要路径，
+   * 而是由 ArkTS 在此一次性推过去；推之前 native 侧取到的是空串，
+   * Electron 的 userData 会落到错误位置。
+   */
+  static pushContextPaths(appContext: common.ApplicationContext): void {
+    if (JsBindingUtils.pathsPushed) {
+      return;
+    }
+    JsBindingUtils.pathsPushed = true;
+    let paths: Record<string, string> = {
+      'filesDir': appContext.filesDir,
+      'tempDir': appContext.tempDir,
+      'cacheDir': appContext.cacheDir,
+      'distributedFilesDir': appContext.distributedFilesDir,
+      'databaseDir': appContext.databaseDir,
+      'preferencesDir': appContext.preferencesDir
+    };
+    try {
+      adapter.SetContextPaths(paths);
+      VerifyLog.info('SetContextPaths OK filesDir=' + paths['filesDir'] +
+        ' tempDir=' + paths['tempDir'] + ' cacheDir=' + paths['cacheDir']);
+    } catch (err) {
+      JsBindingUtils.pathsPushed = false;
+      VerifyLog.error('SetContextPaths FAILED ' + JSON.stringify(err));
+      console.error('SetContextPaths failed: ' + JSON.stringify(err));
+    }
+  }
 
   static initNativeContext(contextType: ContextType) {
     JsBindingUtils.currentType = contextType;

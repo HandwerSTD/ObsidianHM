@@ -1,31 +1,6 @@
-/*
- * Copyright (c) 2023-2025 Haitai FangYuan Co., Ltd.
- * Redistribution and use in source and binary forms, with or without modification,
- * are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice, this list of
- *    conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice, this list
- *    of conditions and the following disclaimer in the documentation and/or other materials
- *    provided with the distribution.
- *
- * 3. Neither the name of the copyright holder nor the names of its contributors may be used
- *    to endorse or promote products derived from this software without specific prior written
- *    permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
- * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
- * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
+// Copyright (c) 2024 Huawei Device Co., Ltd. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
 
 import type image from '@ohos.multimedia.image';
 import type inputMethod from '@ohos.inputMethod';
@@ -33,6 +8,7 @@ import type GestureEvent from '@ohos.multimodalInput.gestureEvent';
 import type ConfigurationConstant from '@ohos.app.ability.ConfigurationConstant';
 import type common from '@ohos.app.ability.common';
 import type window from '@ohos.window';
+import print from '@ohos.print';
 
 export interface ILoginInfo {
   status: boolean;
@@ -69,6 +45,7 @@ export interface CommandParameter {
   url?: string;
   user_data?: string;
   is_sync?: boolean;
+  is_webapp?: boolean;
 }
 
 export interface CommandResult {
@@ -77,10 +54,17 @@ export interface CommandResult {
   last_widget_Id: number;
 }
 
+export interface WindowLimits {
+  maxHeight: number;
+  maxWidth: number;
+  minHeight: number;
+  minWidth: number;
+}
+
 export interface NativeContext {
   runBrowser: (vec_args: string[]) => void;
   BrowserDestroyed: () => boolean;
-  runOtherProcessType: (processType: number) => void;
+  runArkProcess: (entryParams: string, fdsFrom: number[], fdsTo: number[]) => void;
   registerLifecycle: () => void;
   openFile: (filePath: string) => void;
   readImageFromReceiver: (receiver: image.ImageReceiver) => image.Image;
@@ -99,7 +83,7 @@ export interface NativeContext {
   OnDragMoveCB: (id: string, windowX: number, windowY: number) => void;
   OnDropCB: (id: string, dragInfo: OhosDropData, fileUris: Array<string>) => void;
   OnFontSizeChangeCallback:(fontSizeZoom :number) => void;
-  OnWindowInitSize: (windowRect: WindowBound, drawableRect: WindowBound) => void;
+  OnWindowInitSize: (windowRect: WindowBound, drawableRect: WindowBound, displayId: number) => void;
   OnWindowStatusChange: (id: string, status: window.WindowStatusType) => void;
   OnWindowVisibleChange: (windowId: String, visible: boolean) => void;
   OnWindowInitState: (state: window.WindowStatusType) => void;
@@ -107,20 +91,40 @@ export interface NativeContext {
   OnWindowSizeChange: (id: string, event: WindowBound) => void;
   OnWindowEvent: (id: string, event: number) => void;
   OnWindowVisibilityChange: (id: string, visible: boolean) => void;
+  OnKeyboardHeightChange: (id: string, height: number) => void;
   OnNotificationClickCallback: (id: number) => void;
   OnNotificationCloseCallback: (id: number) => void;
   OnNotificationButtonClickCallback: (id: number, buttonIndex) => void;
+  OnAvailableAreaChangeCallback: (availableArea: WindowBound, displayId: number) => void;
   OnDisplayChangeCallback: (even: string, id: number) => void;
+  OnFoldStatusInit: (status: number) => void;
+  OnFoldStatusChangeCallback: (status: number) => void;
   ExecuteCommand: (id: number, param: CommandParameter) => CommandResult;
   GetBrowserCloseResponse: (id: number) => BrowserCloseResponse;
+  GetAppCloseResponse: () => BrowserCloseResponse;
+  GetSavedContinueData: () => string;
+  SetPendingContinueData: (data: string) => void;
+  SetPendingContinueFile: (fileInfo: string) => void;
+  GetTrayExitResponse: () => TrayExitResponse;
   RegisterWindowEventFilter: (origin_window_id: number) => void;
   ClearWindowEventFilter: (origin_window_id: number) => void;
   OnCaptionButtonRectChange: (id: string, event: CaptionButtonRect) => void;
-  UpdateWindowPcmodeSwitchStatusCB: (value: boolean) => void;
+  UpdateWindowDeviceModeSwitchCB: (mode: DeviceMode) => void;
+  UpdateDisplayBrightnessCB: (display_brightness: string) => void;
+  SetSystemWindowLimits: (windowLimits: WindowLimits) => void;
+  OnWindowDisplayIdChange: (xcomponent_id: string, display_id: number) => void;
+  OnDeviceModeChange: (id: string, event: ChangeEventType, status: window.WindowStatusType) => void;
+  OnAvoidAreaChangeCallback: (statusBarHeight: number) => void;
+  OnBackToLastPage: (id: string) => void;
+  GetLastActiveWidgetId: () => number;
+  OnAbilityStartedCB: (id: string) => void;
+  OnSharedDataReceived: (sharedDataJson: string) => void;
+  IsSupportNodeHandleFeature: () => boolean;
+  ShouldDisableJit: () => boolean;
+  GetDevCommandLines: () => string[];
 }
 
 export interface IParams {
-  callback: (ready: boolean, id: string) => void,
   id: string,
   size: number[], // [width, height]
   initColorRgb: string,
@@ -129,18 +133,18 @@ export interface IParams {
 export interface OhosDragParamToJs {
   text: string;
   url: string;
-  urlTitle: string;
+  url_title: string;
   html: string;
-  webImageFilePath: string;
-  electronFilePath: string;
-  bookmarkBuffer: ArrayBuffer;
-  webCustomBuffer: ArrayBuffer;
-  pixelMapBuffer: ArrayBuffer;
-  pixelMapWidth: number;
-  pixelMapHeight: number;
-  pixelMapTouchX: number;
-  pixelMapTouchY: number;
-  windowId: string;
+  web_image_file_path: string;
+  electron_file_path: string;
+  bookmark_buffer: ArrayBuffer;
+  web_custom_buffer: ArrayBuffer;
+  pixelmap_buffer: ArrayBuffer;
+  pixelmap_width: number;
+  pixelmap_height: number;
+  pixelmap_touch_x: number;
+  pixelmap_touch_y: number;
+  window_id: string;
 }
 
 export interface OhosDropData {
@@ -279,10 +283,12 @@ export interface NewWindowParam {
   closable: boolean,
   always_on_top: boolean,
   resizable: boolean,
+  focusable: boolean,
   is_modal: boolean,
   is_panel: boolean,
-  is_stateless: boolean,
   display_id: number,
+  ability_type: AbilityType,
+  app_id: string
 }
 
 export interface ISubWindowInfo {
@@ -313,6 +319,39 @@ export interface PointCoordinate {
   displayId: number,
 }
 
+export interface PrintJobData {
+  printerId: string,
+  jobName: string,
+  copyNumber: number,
+  isLandscape: boolean,
+  colorMode: print.PrintColorMode,
+  duplexMode: print.PrintDuplexMode,
+  pageSize: PrintPageSize
+  jobId: string,
+  binaryData: ArrayBuffer,
+  printQuality: print.PrintQuality,
+  mediaType: string,
+  isBorderless: boolean,
+  isAutoRotate: boolean,
+  isReverse: boolean,
+  isCollate: boolean,
+  isSequential: boolean,
+  options: string
+}
+
+export interface PrintPageSize {
+  id: string,
+  name: string,
+  width: number,
+  height: number
+}
+
+export enum TrayExitResponse {
+  kUndetermined,
+  kPrevented,
+  kAllowed
+}
+
 export enum BrowserCloseResponse {
   kUndetermined,
   kClosingContinue,
@@ -329,3 +368,41 @@ export interface WindowPreferences {
   maximizable: boolean,
   closable: boolean,
 }
+
+export enum DeviceMode {
+  kPcMode = 0,
+  kNormalWindowMode,
+  kFreeWindowsMode,
+};
+
+export enum ChangeEventType {
+  CHANGE_TO_NORMAL_MODE = 0,
+  CHANGE_TO_FREE_MODE
+};
+
+export enum AbilityType {
+  kEntryAbility = 0,
+  kStatelessAbility,
+  kTaskManagerAbility,
+};
+
+export interface DesktopShortcut {
+  shortcutId: string;
+  label: string;
+  foregroundIconPath: string;
+  backgroundIconPath: string;
+  openAsWindow: boolean;
+};
+
+export interface IWebAppInfo {
+  openAsWindow: boolean;
+  label: string;
+  icon: string;
+  appId: string;
+}
+
+export const kAbilityMap = new Map<AbilityType, string>([
+  [AbilityType.kEntryAbility, 'EntryAbility'],
+  [AbilityType.kStatelessAbility, 'StatelessAbility'],
+  [AbilityType.kTaskManagerAbility, 'TaskManagerAbility']
+])

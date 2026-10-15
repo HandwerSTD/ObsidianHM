@@ -1,31 +1,6 @@
-/*
- * Copyright (c) 2023-2025 Haitai FangYuan Co., Ltd.
- * Redistribution and use in source and binary forms, with or without modification,
- * are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice, this list of
- *    conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice, this list
- *    of conditions and the following disclaimer in the documentation and/or other materials
- *    provided with the distribution.
- *
- * 3. Neither the name of the copyright holder nor the names of its contributors may be used
- *    to endorse or promote products derived from this software without specific prior written
- *    permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
- * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
- * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
+// Copyright (c) 2024 Huawei Device Co., Ltd. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
 
 import { injectable, inject } from 'inversify';
 import { image } from '@kit.ImageKit';
@@ -37,6 +12,8 @@ import LogUtil from '../utils/LogUtil';
 import LogMethod from '../common/LogDecorator';
 import emitter from '@ohos.events.emitter';
 import { ContextAdapter } from './ContextAdapter';
+import { VerifyLog } from '../utils/VerifyLog';
+import { deviceInfo } from '@kit.BasicServicesKit';
 
 const TAG: string = 'statusBar';
 const TRAY_IMAGE_EDITABLE: boolean = false;
@@ -67,7 +44,6 @@ interface MenuRawData {
 
 @injectable()
 export class StatusBarManagerAdapter extends BaseAdapter {
-  private TOOLTIPS: string = '';
   private TITLE: string = '';
   private isCreated: boolean = false;
   private quickOperationHeight: number = 100;
@@ -101,8 +77,9 @@ async SetImage(
   }
 
   if (blackTrayIcon === undefined && whiteTrayIcon !== undefined) {
-    // 调用方只给了白色图标。状态栏在浅色背景下取 black 那一份，直接复用白图会看不见，
-    // 因此由外层把白色图标反色成黑色图标。
+    // 本项目定制：调用方只给了白色图标（外层 installTray 用单张 tray.png）。
+    // 状态栏在浅色背景下取 black 那一份，直接复用白图会看不见，
+    // 因此由 ArkTS 侧把白色图标逐像素反色成黑色图标。
     blackTrayIcon = this.invertIcon(whiteTrayIcon, whiteWidth, whiteHeight);
   }
 
@@ -154,7 +131,13 @@ async SetImage(
 
   @LogMethod
   SetToolTips(tooltips: string) {
-    this.TOOLTIPS = tooltips;
+    try {
+      if (deviceInfo.sdkApiVersion >= 22) {
+        statusBarManager.updateStatusBarHoverTips(this.ctxAdapter.getActiveContext(), tooltips);
+      }
+    } catch (error) {
+      LogUtil.error(TAG, `updateStatusBarHoverTips failed. error code: ${error.code}, error message: ${error.message}`);
+    }
   }
 
   @LogMethod
@@ -162,9 +145,12 @@ async SetImage(
     LogUtil.debug(TAG, `JS SetContextMenu:: ${menu_model}`);
     try {
       let menu_json: MenuRawData[] = JSON.parse(menu_model) as MenuRawData[];
+      menu_json.map((item: MenuRawData) => {
+        if (item.visible === false)
+          menu_json.splice(menu_json.indexOf(item), 1);
+      });
       const items: statusBarManager.StatusBarMenuItem[] = this.transformJsonToMenus(menu_json);
-      const modified_items: statusBarManager.StatusBarMenuItem[] = this.processData(items) as statusBarManager.StatusBarMenuItem[];
-      const menus: statusBarManager.StatusBarGroupMenu[] = [modified_items];
+      const menus: statusBarManager.StatusBarGroupMenu[] = this.processData(items) as statusBarManager.StatusBarGroupMenu[];
       try {
         statusBarManager.updateStatusBarMenu(this.ctxAdapter.getActiveContext(), menus, () => {onCompleted && onCompleted(true)});
       } catch (err){
@@ -199,23 +185,35 @@ async SetImage(
     }
   }
 
-  private recurse(items: MenuItem[] | undefined, isTopLevel: boolean = true): undefined | MenuItem[] {
+  private recurse(items: MenuItem[] | undefined, isTopLevel: boolean = true): undefined | statusBarManager.StatusBarGroupMenu[] {
     if (items === undefined) {
-      return items;
+      return undefined;
     }
+    let menus: statusBarManager.StatusBarGroupMenu[] = [];
+    let itemArray: MenuItem[] = [];
     items.map((item: MenuItem) => {
       if (!isTopLevel) {
         item.subTitle = item.title;
         item.title = undefined;
+      } else {
+        if (item.menuAction?.menuCode === '-1') {
+          menus.push(itemArray as statusBarManager.StatusBarMenuItem[]);
+          itemArray = [];
+        } else {
+          itemArray.push(item);
+        }
       }
       this.recurse(item.subMenu, false);
     });
-    return items;
+    if (itemArray.length > 0) {
+      menus.push(itemArray as statusBarManager.StatusBarMenuItem[]);
+    }
+    return menus;
   }
 
-  private processData(rawData: statusBarManager.StatusBarMenuItem[]) : MenuItem[] {
-    let modifiedData: MenuItem[]  = JSON.parse(JSON.stringify(rawData)) as MenuItem[];
-    return this.recurse(modifiedData) as MenuItem[];
+  private processData(rawData: statusBarManager.StatusBarMenuItem[]) : statusBarManager.StatusBarGroupMenu[] {
+    let modifiedData: MenuItem[] = JSON.parse(JSON.stringify(rawData)) as MenuItem[];
+    return this.recurse(modifiedData) as statusBarManager.StatusBarGroupMenu[];
   }
 
 
@@ -243,7 +241,8 @@ async SetImage(
     return jsonData.map(item => this.transformMenuItem(item) as statusBarManager.StatusBarMenuItem);
   }
 
-  // 逐像素反色。图标是单色的，反色只作用于颜色通道，alpha 保持原样，
+  // 本项目定制：逐像素反色，供上面缺 black 图标时补一份。
+  // 图标是单色的，反色只作用于颜色通道，alpha 保持原样，
   // 这样图标的轮廓与抗锯齿边缘都不变，只有黑白互换。
   // 新建 PixelMap 用的是与白色图标完全相同的初始化参数，两者的数据解释方式因而一致。
   private invertIcon(source: image.PixelMap, width: number, height: number): image.PixelMap | undefined {
@@ -252,7 +251,9 @@ async SetImage(
     if (pixelBytes !== byteLength) {
       // 逐行反色要求缓冲区里没有行间填充字节。这里的 PixelMap 都是由定长缓冲区直接创建，
       // 每行字节数就是 width * 4，遇到不一致的情况就不做反色，保留原本的白图。
-      LogUtil.warn(TAG, 'tray icon stride mismatch, skip invert: ' + pixelBytes + ' vs ' + byteLength);
+      let line = 'tray invert SKIPPED stride mismatch, bytes=' + pixelBytes + ' expect=' + byteLength;
+      LogUtil.warn(TAG, line);
+      VerifyLog.warn(line);
       return undefined;
     }
     let pixels: ArrayBuffer = new ArrayBuffer(byteLength);
@@ -274,10 +275,14 @@ async SetImage(
         }
       });
     } catch (error) {
-      LogUtil.error(TAG, 'failed invert tray icon because: ' + JSON.stringify(error));
+      let line = 'tray invert FAILED ' + JSON.stringify(error);
+      LogUtil.error(TAG, line);
+      VerifyLog.error(line);
       return undefined;
     }
-    LogUtil.info(TAG, 'tray icon inverted: ' + width + 'x' + height);
+    let okLine = 'tray invert OK ' + width + 'x' + height;
+    LogUtil.info(TAG, okLine);
+    VerifyLog.info(okLine);
     return inverted;
   }
 

@@ -1,31 +1,6 @@
-/*
- * Copyright (c) 2023-2025 Haitai FangYuan Co., Ltd.
- * Redistribution and use in source and binary forms, with or without modification,
- * are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice, this list of
- *    conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice, this list
- *    of conditions and the following disclaimer in the documentation and/or other materials
- *    provided with the distribution.
- *
- * 3. Neither the name of the copyright holder nor the names of its contributors may be used
- *    to endorse or promote products derived from this software without specific prior written
- *    permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
- * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
- * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
+// Copyright (c) 2024 Huawei Device Co., Ltd. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
 
 import { inject, injectable } from 'inversify';
 import dragController from "@ohos.arkui.dragController"
@@ -63,84 +38,135 @@ export class DragDropAdapter extends BaseAdapter {
   }
 
   @LogMethod
-  async startDrag(dragParams: OhosDragParamToJs) {
-    this.dragSourceWindowId = dragParams.windowId;
-    if (dragParams.pixelMapTouchX > dragParams.pixelMapWidth
-        || dragParams.pixelMapTouchY > dragParams.pixelMapHeight) {
-      LogUtil.error(TAG, `startDrag fail: touch point param is invalid, 
-                    touchX:${dragParams.pixelMapTouchX},
-                    touchY:${dragParams.pixelMapTouchY}, 
-                    width:${dragParams.pixelMapWidth},
-                    height:${dragParams.pixelMapHeight}`);
-      return;
-    }
-    let touchX: Dimension = 
-        ((dragParams.pixelMapTouchX / dragParams.pixelMapWidth) * 100 + '%') as Dimension;
-    let touchY: Dimension = 
-        ((dragParams.pixelMapTouchY / dragParams.pixelMapHeight) * 100 + '%') as Dimension;
-    let unifiedData: UDC.UnifiedData | undefined;
-    if (deviceInfo.sdkApiVersion >= 15) {
-      unifiedData = this.dragParamManager.handleDragDataForEntries(dragParams);
-    } else {
-      unifiedData = this.dragParamManager.handleDragRecords(dragParams);
-    }
-    let dragInfo: dragController.DragInfo = {
-      pointerId: 0,
-      data: unifiedData,
-      extraParams: '',
-      previewOptions: {numberBadge: false, mode: DragPreviewMode.DISABLE_SCALE},
-      touchPoint: {
-        x: touchX,
-        y: touchY
-      }
-    }
-
-    let opts: image.InitializationOptions = {
-      editable: false,
-      pixelFormat: image.PixelMapFormat.BGRA_8888,
-      size: {
-        height: dragParams.pixelMapHeight,
-        width: dragParams.pixelMapWidth
-      }
-    }
-    try {
-      this.pixmap = await image.createPixelMap(dragParams.pixelMapBuffer, opts);
-    } catch (error) {
-      LogUtil.error(TAG, `pixelmap create fail :${JSON.stringify(error)}`);
-      return;
-    }
-    let dragItemInfo: DragItemInfo = {
-      pixelMap: this.pixmap,
-      builder: ()=>{},
-      extraInfo: "ohosDrag"
-    }
-    this.executeDragAction(dragItemInfo, dragInfo);
-  }
-
-  private executeDragAction(dragItemInfo: DragItemInfo, dragInfo: dragController.DragInfo) {
+  startDrag(dragParams: OhosDragParamToJs, callback: (result: boolean) => void) {
+    this.dragSourceWindowId = dragParams.window_id;
     let uiContext = this.dragParamManager.getUiContext(this.dragSourceWindowId);
     if (!uiContext) {
-      this.clearDragParam();
-      LogUtil.error(TAG, `executeDrag fail : uiContext not exist`);
+      this.handleStartDragError(callback, 'uiContext not exist');
       return;
     }
+    let dragInfo = this.prepareDragInfo(dragParams);
+    if (!dragInfo) {
+      this.handleStartDragError(callback, 'prepareDragInfo fail');
+      return;
+    }
+    this.prepareDragItemInfo(dragParams).then((dragItemInfo: DragItemInfo | undefined) => {
+      if (!dragItemInfo || !uiContext || !dragInfo) {
+        this.handleStartDragError(callback, 'dragItemInfo invalid');
+        return;
+      }
+      try {
+        let dragAction = this.prepareDragAction(uiContext, dragItemInfo, dragInfo);
+        if (!dragAction) {
+          this.handleStartDragError(callback, 'dragAction create fail');
+          return;
+        }
+        dragAction.on('statusChange', this.dragActionStatusListener(dragAction));
+        dragAction.startDrag().then(() => {
+          callback(true);
+        }).catch((err: Error) => {
+          this.handleStartDragError(callback, 'dragAction startDrag fail', err);
+        });
+      } catch (error) {
+        this.handleStartDragError(callback, 'dragAction fail', error);
+      }
+    }).catch((err: Error) => {
+      this.handleStartDragError(callback, 'prepareDragItemInfo fail', err);
+    });
+  }
+
+  private handleStartDragError(callback: (result: boolean) => void,
+                               message?: string, error?: Error): void {
+    this.clearDragParam();
+    if (error) {
+      LogUtil.error(TAG, `startDrag fail: ${message}, err:${JSON.stringify(error)}`);
+    } else {
+      LogUtil.error(TAG, `startDrag fail: ${message}`);
+    }
+    callback(false);
+  }
+
+  private prepareDragAction(uiContext: UIContext, dragItemInfo: DragItemInfo,
+                            dragInfo: dragController.DragInfo) : dragController.DragAction | undefined {
     try {
       let customBuilders = new Array<CustomBuilder | DragItemInfo>();
       customBuilders.push(dragItemInfo);
       let dragAction = uiContext.getDragController().createDragAction(customBuilders, dragInfo);
       if (!dragAction) {
-        this.clearDragParam();
         LogUtil.error(TAG, `dragAction create fail`);
         return;
       }
-      dragAction.on('statusChange', this.dragActionStatusListener(dragAction));
-      dragAction.startDrag().catch((err: Error) => {
-        this.clearDragParam();
-        LogUtil.error(TAG, `dragAction startDrag fail :${JSON.stringify(err)}`);
-      })
+      return dragAction;
+    } catch (error) {
+      LogUtil.error(TAG, `prepareDragAction fail :${JSON.stringify(error)}`);
+      return;
+    }
+  }
+
+  private prepareDragInfo(dragParams: OhosDragParamToJs) : dragController.DragInfo | undefined {
+    if (dragParams.pixelmap_touch_x > dragParams.pixelmap_width
+      || dragParams.pixelmap_touch_y > dragParams.pixelmap_height) {
+      LogUtil.error(TAG, `startDrag fail: touch point param is invalid,
+                    touchX:${dragParams.pixelmap_touch_x},
+                    touchY:${dragParams.pixelmap_touch_y},
+                    width:${dragParams.pixelmap_width},
+                    height:${dragParams.pixelmap_height}`);
+      return;
+    }
+    try {
+      let touchX: Dimension =
+        ((dragParams.pixelmap_touch_x / dragParams.pixelmap_width) * 100 + '%') as Dimension;
+      let touchY: Dimension =
+        ((dragParams.pixelmap_touch_y / dragParams.pixelmap_height) * 100 + '%') as Dimension;
+      let unifiedData: UDC.UnifiedData | undefined;
+      if (deviceInfo.sdkApiVersion >= 15) {
+        unifiedData = this.dragParamManager.handleDragDataForEntries(dragParams);
+      } else {
+        unifiedData = this.dragParamManager.handleDragRecords(dragParams);
+      }
+      let dragInfo: dragController.DragInfo = {
+        pointerId: 0,
+        data: unifiedData,
+        extraParams: '',
+        previewOptions: {numberBadge: false, mode: DragPreviewMode.DISABLE_SCALE},
+        touchPoint: {
+          x: touchX,
+          y: touchY
+        }
+      }
+      return dragInfo;
+    } catch (error) {
+      LogUtil.error(TAG, `prepareDragInfo fail, error:${JSON.stringify(error)}`);
+      return;
+    }
+  }
+
+  private async prepareDragItemInfo(dragParams: OhosDragParamToJs) : Promise<DragItemInfo | undefined> {
+    let opts: image.InitializationOptions = {
+      editable: false,
+      pixelFormat: image.PixelMapFormat.BGRA_8888,
+      size: {
+        height: dragParams.pixelmap_height,
+        width: dragParams.pixelmap_width
+      }
+    }
+    try {
+      this.pixmap = await image.createPixelMap(dragParams.pixelmap_buffer, opts);
+    } catch (error) {
+      LogUtil.error(TAG, `pixelmap create fail :${JSON.stringify(error)}`);
+      return;
+    }
+
+    try {
+      let dragItemInfo: DragItemInfo = {
+        pixelMap: this.pixmap,
+        builder: ()=>{},
+        extraInfo: "ohosDrag"
+      }
+      return dragItemInfo;
     } catch(err) {
-      this.clearDragParam();
       LogUtil.error(TAG, `dragAction fail :${JSON.stringify(err)}`);
+      return;
     }
   }
 
@@ -181,6 +207,7 @@ export class DragDropAdapter extends BaseAdapter {
         if (dragAction) {
           dragAction.off('statusChange');
         }
+        LogUtil.info(TAG, 'drag action listener, drag ended.');
         this.nativeContext.OnDragEndCB(this.dragSourceWindowId);
         this.clearDragParam();
       }

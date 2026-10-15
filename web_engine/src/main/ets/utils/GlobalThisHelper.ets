@@ -1,39 +1,18 @@
-/*
- * Copyright (c) 2023-2025 Haitai FangYuan Co., Ltd.
- * Redistribution and use in source and binary forms, with or without modification,
- * are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice, this list of
- *    conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice, this list
- *    of conditions and the following disclaimer in the documentation and/or other materials
- *    provided with the distribution.
- *
- * 3. Neither the name of the copyright holder nor the names of its contributors may be used
- *    to endorse or promote products derived from this software without specific prior written
- *    permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
- * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
- * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
+// Copyright (c) 2024 Huawei Device Co., Ltd. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
 
 import LogUtil from '../utils/LogUtil';
 import { GlobalContext } from '../utils/GlobalContext';
 import Inject from '../common/InjectModule';
 import { DependencyProvider } from '../interface/Dependency';
+import { StringStack } from '../utils/StringStackUtil';
 
 const TAG = 'GlobalThisHelper';
 const INIT_ABILITY: string = 'init_ability';
+const WINDOW_TYPES: string = 'window_types';
+const ACTIVE_BROWSER_IDS: string = 'active_browser_ids';
+
 
 export class GlobalThisHelper {
   private static global: GlobalContext = GlobalContext.getInstance();
@@ -72,4 +51,77 @@ export class GlobalThisHelper {
     }
     return GlobalThisHelper.global.getObject(INIT_ABILITY) as boolean;
   }
+
+  public static addWindowTypeRec(xcomponentId: string, appId: string): void {
+    if (GlobalThisHelper.global.getObject(WINDOW_TYPES) === undefined) {
+      let initRecords = new Map<string, string>();
+      GlobalThisHelper.global.setObject(WINDOW_TYPES, initRecords);
+    }
+    let records = GlobalThisHelper.global.getObject(WINDOW_TYPES) as Map<string, string>;
+    records.set(xcomponentId, appId);
+  }
+
+  public static getWebappWindow(appId: string): string {
+    let xcomponentId: string = '';
+    if (GlobalThisHelper.global.getObject(WINDOW_TYPES) === undefined) {
+      return xcomponentId;
+    }
+    let records = GlobalThisHelper.global.getObject(WINDOW_TYPES) as Map<string, string>;
+    for (let key of records.keys()) {
+      let value = records.get(key);
+      if (value) {
+        if (value === appId) {
+          return key;
+        }
+      }
+    }
+    return xcomponentId;
+  }
+
+  public static delWindowTypeRec(xcomponentId : string): void {
+    if (GlobalThisHelper.global.getObject(WINDOW_TYPES) === undefined) {
+      return;
+    }
+    let records = GlobalThisHelper.global.getObject(WINDOW_TYPES) as Map<string, string>;
+    records.delete(xcomponentId);
+  }
+
+  public static isWebappWindow(xcomponentId : string): boolean {
+     if (GlobalThisHelper.global.getObject(WINDOW_TYPES) === undefined) {
+      return false;
+    }
+    let records = GlobalThisHelper.global.getObject(WINDOW_TYPES) as Map<string, string>;
+    let isapp = records.get(xcomponentId) as string;
+    return (isapp != undefined) && (isapp.length !== 0);
+  }
+
+  public static pushActiveBrowserId(xcomponentId : string): void {
+    if (GlobalThisHelper.global.getObject(ACTIVE_BROWSER_IDS) === undefined) {
+      let initRecords = new StringStack();
+      GlobalThisHelper.global.setObject(ACTIVE_BROWSER_IDS, initRecords);
+    }
+    let records = GlobalThisHelper.global.getObject(ACTIVE_BROWSER_IDS) as StringStack;
+    records.remove(xcomponentId);
+    records.push(xcomponentId);
+  }
+
+  public static delActiveBrowserId(xcomponentId : string): void {
+   if (GlobalThisHelper.global.getObject(ACTIVE_BROWSER_IDS) === undefined) {
+      return;
+    }
+    let records = GlobalThisHelper.global.getObject(ACTIVE_BROWSER_IDS) as StringStack;
+    records.remove(xcomponentId);
+  }
+
+  public static getLastActiveBrowserId(): string | undefined {
+    if (GlobalThisHelper.global.getObject(ACTIVE_BROWSER_IDS) === undefined) {
+      return undefined;
+    }
+    let records = GlobalThisHelper.global.getObject(ACTIVE_BROWSER_IDS) as StringStack;
+    if (records.isEmpty()) {
+      return undefined;
+    }
+    return records.peek();
+  }
+
 }

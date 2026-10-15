@@ -43,6 +43,10 @@
     {
       "name": "StatelessAbility_label",
       "value": "StatelessAbility"
+    },
+    {
+      "name": "OpenNewWindow_label",
+      "value": "OpenNewWindow"
     }
   ]
 }

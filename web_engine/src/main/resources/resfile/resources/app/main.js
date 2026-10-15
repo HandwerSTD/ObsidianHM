@@ -399,6 +399,91 @@ function logger(logfile) {
 
 let log = logger(path.join(dataPath, 'obsidian.log'));
 
+// 升级验证专用的统一日志出口。与 ArkTS 侧 VerifyLog 写同一个文件、同一个前缀，
+// 一次 tail 就能拿全两侧的待验证项。
+function vlog() {
+	log.apply(null, ['[OHSV]'].concat(Array.prototype.slice.call(arguments)));
+}
+
+// dispatchDeeplink 自己 emit 出来的 open-url 与 native 发过来的长得一样，
+// 用这个标志把两者分开，否则探针会把自己的 emit 误报成 native 在发事件。
+let emittingFromQueue = false;
+
+// native 是否会发射 open-url：这一条决定 deeplink 还要不要走文件队列。
+// 监听挂在这里而不是 installVerifyProbes 里——冷启动时 native 的事件可能在
+// app ready 之前就到，挂晚了会漏掉。
+try {
+	app.on('open-url', function (event, url) {
+		if (emittingFromQueue) {
+			vlog('probe open-url observed, source=our-own-emit url=' + url);
+			return;
+		}
+		vlog('probe NATIVE open-url received url=' + url);
+	});
+	vlog('probe open-url listener registered');
+} catch (e) {
+	vlog('probe open-url listener FAILED ' + (e && e.message ? e.message : String(e)));
+}
+
+function installVerifyProbes() {
+	vlog('probe start, electron=' + process.versions.electron +
+		' chrome=' + process.versions.chrome +
+		' node=' + process.versions.node +
+		' v8=' + process.versions.v8);
+	vlog('probe appPath=' + app.getAppPath() + ' userData=' + dataPath);
+
+	// 运行中再次拉起走的是 kSecondInstance，这里看它有没有到。
+	try {
+		app.on('second-instance', function (event, argv, cwd) {
+			vlog('probe second-instance received argv=' + JSON.stringify(argv));
+		});
+	} catch (e) {
+		vlog('probe second-instance listener FAILED ' + (e && e.message ? e.message : String(e)));
+	}
+
+	// Electron JS -> ArkTS 的通用通道。
+	try {
+		let sp = electron.systemPreferences;
+		vlog('probe systemPreferences=' + (sp ? 'present' : 'undefined') +
+			' callArkTSFunction=' + (sp && typeof sp.callArkTSFunction === 'function' ? 'yes' : 'no'));
+		if (sp && typeof sp.callArkTSFunction === 'function') {
+			sp.callArkTSFunction('EtsBridge.TestReturnString', 'string')
+				.then(function (r) {
+					vlog('probe callArkTSFunction OK ' + JSON.stringify(r));
+				})
+				.catch(function (e) {
+					vlog('probe callArkTSFunction REJECTED ' + (e && e.message ? e.message : String(e)));
+				});
+		}
+	} catch (e) {
+		vlog('probe callArkTSFunction threw ' + (e && e.message ? e.message : String(e)));
+	}
+
+	// screen 模块：GetAvailableArea / GetFontSizeScale 两个端点在新运行时已消失。
+	try {
+		let s = electron.screen;
+		let d = s.getPrimaryDisplay();
+		vlog('probe primaryDisplay size=' + JSON.stringify(d.size) +
+			' workArea=' + JSON.stringify(d.workArea) +
+			' scaleFactor=' + d.scaleFactor);
+	} catch (e) {
+		vlog('probe getPrimaryDisplay FAILED ' + (e && e.message ? e.message : String(e)));
+	}
+
+	try {
+		let ver = app.getVersion();
+		vlog('probe app.getVersion=' + ver);
+	} catch (e) {
+		vlog('probe getVersion FAILED ' + (e && e.message ? e.message : String(e)));
+	}
+}
+
+app.whenReady().then(function () {
+	setTimeout(function () {
+		installVerifyProbes();
+	}, 3000);
+});
+
 let idFile = path.join(dataPath, 'id');
 let id;
 try {
@@ -680,9 +765,24 @@ function installTray() {
 	}
 	try {
 		trayIcon = new Tray(iconPath);
+		vlog('tray created path=' + iconPath + ' size=' + fs.statSync(iconPath).size);
 	} catch (e) {
 		log('托盘初始化失败', e && e.message ? e.message : String(e));
+		vlog('tray create FAILED ' + (e && e.stack ? e.stack : String(e)));
 		return null;
+	}
+	try {
+		let nt = electron.nativeTheme;
+		vlog('nativeTheme=' + (nt ? 'present' : 'undefined') +
+			' shouldUseDarkColors=' + (nt ? nt.shouldUseDarkColors : 'n/a') +
+			' source=' + (nt ? nt.themeSource : 'n/a'));
+		if (nt && typeof nt.on === 'function') {
+			nt.on('updated', function () {
+				vlog('nativeTheme updated shouldUseDarkColors=' + nt.shouldUseDarkColors);
+			});
+		}
+	} catch (e) {
+		vlog('nativeTheme probe FAILED ' + (e && e.message ? e.message : String(e)));
 	}
 	let toggle = function () {
 		let w = focusedWindow();
@@ -1035,11 +1135,21 @@ process.on('uncaughtException', function (error) {
 		});
 });
 
-// deeplink 通道：HarmonyOS 侧把 obsidian:// 链接追加写入 dataPath 下的队列文件，
-// 这里取出后交给 Obsidian 内建的 open-url 处理器。
-// ArkTS 到 Electron 主进程之间只有 ExecuteCommand 一条通道，它只覆盖窗口管理，
-// 送不进 open-url；而本版本的 Electron 也没有原生协议处理与单实例转发，
-// 所以由 ArkTS 与本文件共同完成这条链路。
+// deeplink 派发：ArkTS 侧把 obsidian:// 链接写进 dataPath 下的队列文件，这里取出后
+// 交给 Obsidian 内建的 open-url 处理器。
+//
+// 为什么必须走文件队列：ArkTS 到 Electron 主进程之间只有 ExecuteCommand 一条通道，
+// 它只覆盖窗口管理。新运行时的 kOpenURL 已实测确认不发射 open-url——
+// 埋点 [OHSV] 的 'probe NATIVE open-url received' 在多轮运行中命中 0 次，
+// 同一时刻命中的是 'probe open-url observed, source=our-own-emit'，即本文件自己 emit 的回声。
+// kSecondInstance 能触发事件但 argv 为空，带不了链接。
+//
+// app.emit('open-url') 会同时命中 asar 注册的两个监听：
+//   1. app.once("open-url")  冷启动缓冲，挂在 will-finish-launching 上，把 URL 存进变量
+//   2. app.on("open-url")     真正调 Ze(url) 处理
+// 链接打不开的场景下同一条链接可能被走两遍，弹窗出现两次。该行为与运行时版本无关，
+// 旧运行时同样如此。是否需要处理取决于实际是否复现，需要时在这里区分：
+// emit 前摘掉 once 监听，或改走其它入口。详见 docs/asar-customization-runtime.md 8.3。
 const DEEPLINK_QUEUE_FILE = 'obsidian-deeplink.pending';
 
 function readQueuedDeeplinks() {
@@ -1061,6 +1171,7 @@ function readQueuedDeeplinks() {
 function dispatchDeeplink(url) {
 	// Obsidian 在 asar 加载完成后才注册 open-url 监听，
 	// 冷启动时队列里已有的链接要等到监听就绪才能派发，否则事件会被丢弃。
+	vlog('dispatchDeeplink start url=' + url);
 	let attempts = 0;
 	let timer = setInterval(function () {
 		attempts += 1;
@@ -1069,15 +1180,23 @@ function dispatchDeeplink(url) {
 			// 记录写在派发之前：$e 内部会同步抛出异常（例如找不到仓库），
 			// 放在派发之后记录会把这次派发整条丢掉。
 			log('正在派发 deeplink', url);
+			vlog('dispatchDeeplink emitting after ' + attempts + ' tries, listeners=' +
+				app.listenerCount('open-url'));
 			try {
+				emittingFromQueue = true;
 				app.emit('open-url', { preventDefault: function () {} }, url);
+				emittingFromQueue = false;
 				log('已派发 deeplink', url);
+				vlog('dispatchDeeplink emitted OK url=' + url);
 			} catch (e) {
+				emittingFromQueue = false;
 				log('派发 deeplink 时抛出异常', url, e && e.stack ? e.stack : String(e));
+				vlog('dispatchDeeplink threw ' + (e && e.stack ? e.stack : String(e)));
 			}
 		} else if (attempts >= 40) {
 			clearInterval(timer);
 			log('等待 open-url 监听超时，丢弃 deeplink', url);
+			vlog('dispatchDeeplink GAVE UP url=' + url);
 		}
 	}, 250);
 }
@@ -1086,6 +1205,7 @@ function pollDeeplinkQueue() {
 	let links = readQueuedDeeplinks();
 	if (links.length === 0) return;
 	log('从队列读到 deeplink', links.length, '条');
+	vlog('deeplink queue read n=' + links.length + ' urls=' + JSON.stringify(links));
 	links.forEach(dispatchDeeplink);
 }
 

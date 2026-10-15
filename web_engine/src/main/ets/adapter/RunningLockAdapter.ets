@@ -1,31 +1,6 @@
-/*
- * Copyright (c) 2023-2025 Haitai FangYuan Co., Ltd.
- * Redistribution and use in source and binary forms, with or without modification,
- * are permitted provided that the following conditions are met:
- *
- * 1. Redistributions of source code must retain the above copyright notice, this list of
- *    conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright notice, this list
- *    of conditions and the following disclaimer in the documentation and/or other materials
- *    provided with the distribution.
- *
- * 3. Neither the name of the copyright holder nor the names of its contributors may be used
- *    to endorse or promote products derived from this software without specific prior written
- *    permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
- * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
- * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
- * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
+// Copyright (c) 2024 Huawei Device Co., Ltd. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
 
 import { inject, injectable } from 'inversify';
 import { BaseAdapter } from '../common/BaseAdapter';
@@ -34,12 +9,14 @@ import LogMethod from '../common/LogDecorator';
 import { BusinessError } from '@ohos.base';
 import window from '@ohos.window';
 import { ContextAdapter } from './ContextAdapter';
+import {runningLock, deviceInfo} from '@kit.BasicServicesKit';
 
 const TAG: string = 'RunningLock';
 
 @injectable()
 export class RunningLockAdapter extends BaseAdapter {
   private ctxAdapter: ContextAdapter;
+  private recordLock: runningLock.RunningLock | null = null;
 
   constructor(@inject(ContextAdapter) ctxAdapter: ContextAdapter) {
     super();
@@ -47,13 +24,21 @@ export class RunningLockAdapter extends BaseAdapter {
   }
 
   @LogMethod
-  start() {
-    this.keepScreenOn(true);
+  start(lockType: string) {
+    if (lockType === 'prevent-app-suspension') {
+      this.holdRunningLock(true);
+    } else if (lockType === 'prevent-display-sleep') {
+      this.keepScreenOn(true);
+    }
   }
 
   @LogMethod
-  stop() {
-    this.keepScreenOn(false);
+  stop(lockType: string) {
+    if (lockType === 'prevent-app-suspension') {
+      this.holdRunningLock(false);
+    } else if (lockType === 'prevent-display-sleep') {
+      this.keepScreenOn(false);
+    }
   }
 
   private keepScreenOn(isKeepScreenOn: boolean) {
@@ -72,5 +57,47 @@ export class RunningLockAdapter extends BaseAdapter {
     }).catch((err: BusinessError) => {
       LogUtil.error(TAG, 'Failed to obtain the top window. Cause: ' + JSON.stringify(err));
     });
+  }
+
+  private holdRunningLock(isHold: boolean) {
+    if (deviceInfo.sdkApiVersion < 23) {
+      LogUtil.error(TAG, 'Failed to hold RunningLock. Cause: sdkApiVersion < 23');
+      return;
+    }
+    if (isHold) {
+      if (this.recordLock) {
+        return;
+      }
+      runningLock.create('prevent_app_suspension', runningLock.RunningLockType.BACKGROUND_USER_IDLE, (err: Error, lock: runningLock.RunningLock) => {
+        if (typeof err === 'undefined') {
+          LogUtil.error(TAG, 'create running lock: ' + lock);
+          this.recordLock = lock;
+          try {
+            this.recordLock.hold(-1);
+            LogUtil.info(TAG, 'hold running lock success');
+          } catch(err) {
+            LogUtil.error(TAG, 'hold running lock failed, err: ' + err);
+          }
+        } else {
+          LogUtil.error(TAG, 'create running lock failed, err: ' + err);
+        }
+      });
+    } else {
+      if (this.recordLock) {
+        try {
+          let isHolding = this.recordLock.isHolding();
+          if (!isHolding) {
+            LogUtil.info(TAG, 'hold lock already release');
+            this.recordLock = null;
+            return;
+          }
+          this.recordLock.unhold();
+          this.recordLock = null;
+          LogUtil.info(TAG, 'hold running unlock success');
+        } catch(err) {
+          LogUtil.error(TAG, 'hold running unlock failed, err: ' + err);
+        }
+      }
+    }
   }
 }

@@ -1,0 +1,8 @@
+/node_modules
+/oh_modules
+/.preview
+/build
+/.cxx
+/.test
+# 预编译运行时需要随仓库走，main.js 与 asar 都依赖它。
+# /libs

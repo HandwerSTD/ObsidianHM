@@ -1,7 +1,7 @@
 import { loginComponentManager, LoginWithHuaweiIDButton } from '@kit.AccountKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { BusinessError } from '@kit.BasicServicesKit';
-import { promptAction, router } from '@kit.ArkUI';
+import { router } from '@kit.ArkUI';
 import { connection } from '@kit.NetworkKit';
 import { authentication } from '@kit.AccountKit';
 import { util } from '@kit.ArkTS';
@@ -150,7 +150,8 @@ export struct QuickLoginButtonComponent {
   // Toast提示
   showToast(resource: string) {
     try {
-      promptAction.showToast({
+      // promptAction.showToast(自由函数) 自 API 18 起 deprecated,改用 UIContext.getPromptAction()。
+      this.getUIContext().getPromptAction().showToast({
         message: resource,
         duration: 2000
       });

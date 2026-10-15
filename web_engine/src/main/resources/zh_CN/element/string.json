@@ -45,6 +45,10 @@
       "value": "是否允许直接访问下载文件夹"
     },
     {
+      "name": "distributed_datasync",
+      "value": "是否允许不同设备间的数据交换"
+    },
+    {
       "name": "documents_dir",
       "value": "是否允许直接访问文档文件夹"
     },
@@ -73,8 +77,16 @@
       "value": "无法访问系统剪贴板"
     },
     {
+      "name": "screenshot_dialog_title",
+      "value": "无法访问系统截屏"
+    },
+    {
       "name": "pasteBoard_dialog_content",
       "value": "您已关闭剪贴板的访问权限，建议前往设置-> 隐私与安全-> 剪贴板，开启 label 的剪贴板访问权限"
+    },
+    {
+      "name": "screenshot_dialog_content",
+      "value": "您已关闭截屏的访问权限，建议前往设置-> 隐私与安全-> 截屏，开启 label 的截屏访问权限"
     },
     {
       "name": "dialog_confirm_button",
@@ -83,6 +95,38 @@
     {
       "name": "dialog_cancel_button",
       "value": "取消"
+    },
+    {
+      "name": "go_to_app_gallery",
+      "value": "前往应用市场搜索"
+    },
+    {
+      "name": "download",
+      "value": "下载"
+    },
+    {
+      "name": "still_download",
+      "value": "仍要下载"
+    },
+    {
+      "name": "installation_not_supported",
+      "value": "不支持安装此格式文件"
+    },
+    {
+      "name": "add_failed_tip",
+      "value": "添加失败"
+    },
+    {
+      "name": "file_name_str",
+      "value": "名称:"
+    },
+    {
+      "name": "file_size_str",
+      "value": "大小:"
+    },
+    {
+      "name": "screenshot",
+      "value": "是否允许屏幕截图"
     }
   ]
 }

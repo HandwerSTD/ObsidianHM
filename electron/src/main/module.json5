@@ -15,7 +15,7 @@
     "metadata": [
       {
         "name": "client_id",
-        "value": "1949235012553433536"
+        "value": ""
       }
     ],
     "abilities": [
@@ -40,12 +40,24 @@
               "action.system.home",
               "ohos.want.action.viewData"
             ],
+            "uris": []
+          },
+          {
+            "actions": [
+              "ohos.want.action.viewData"
+            ],
             "uris": [
               {
                 "scheme": "obsidian"
               }
             ]
           }
+        ],
+        "metadata": [
+          {
+            "name": "ohos.ability.shortcuts",
+            "resource": "$profile:shortcuts_config"
+          },
         ],
       },
       {

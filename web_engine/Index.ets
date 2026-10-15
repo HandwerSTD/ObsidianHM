@@ -7,3 +7,6 @@ export { WebEmbeddedWindow } from './src/main/ets/components/WebEmbeddedWindow';
 export { WebWindowNode } from './src/main/ets/components/WebWindowNode';
 export { ILoginInfo } from './src/main/ets/interface/CommonInterface';
 export { ILogin } from './src/main/ets/interface/CommonInterface';
+export { WebNodeHandleWindow } from './src/main/ets/components/WebNodeHandleWindow';
+export { WebNodeHandleSubWindow } from './src/main/ets/components/WebNodeHandleSubWindow';
+export { VerifyLog } from './src/main/ets/utils/VerifyLog';
