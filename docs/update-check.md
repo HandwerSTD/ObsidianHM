@@ -72,6 +72,8 @@ flowchart LR
 
 传输只能走文件：Electron 的渲染进程里没有按名调用 ArkTS 绑定的入口，`JsBindingUtils` 注册的名字仅供运行时 C++ binding 内部反查。
 
+这一条在 v34.8.5 运行时下已经不成立，见 8 节。
+
 ## 5. 外层读取
 
 `web_engine/src/main/resources/resfile/resources/app/main.js`：
@@ -126,3 +128,20 @@ flowchart LR
 当前 `versionCode` 是 `11404001`，按上面的分段读出 `1|14|04|001`，对应 `versionName` `1.14.4.1`。
 
 本项目只改 AppScope 的 `versionCode` 与 `versionName`；`appPatch` 递增时 `versionName` 的第四段同步递增。
+
+## 8. 迁移到 `callArkTSFunction`
+
+v34.8.5 运行时提供了 `callArkTSFunction`：Electron 主进程可以直接调 ArkTS 函数并拿到返回值，承载它的是新模板的 `web_engine/src/main/ets/adapter/EtsBridgeAdapter.ets`。实测返回 `{"type":"string","value":"ets bridge adapter"}`。
+
+它改写了第 4 节「传输只能走文件」的结论。这套机制的两条流量方向相反，需要分别判断：
+
+| 流量 | 方向 | `callArkTSFunction` 能否替代 |
+|------|------|------------------------------|
+| 结果：ArkTS 查完告诉 JS | ArkTS → JS | 能。改成主进程按需拉取 |
+| 触发：JS 请 ArkTS 立即查一次 | JS → ArkTS | 能，而且更直接 |
+
+替代方案：关于页发问时，渲染进程经 ipc 通道到主进程，主进程 `await callArkTSFunction('UpdateChecker.GetStatus', 'string')` 拿到结果。这样 `update-check.json` 与 `update-check.now` 两个文件、500 毫秒与 3 秒两个 `setInterval` 都可以删掉，HTTP 请求变成请求时发起。
+
+要改的地方：`UpdateChecker.ets` 的 `checkOnce` 从 fire-and-forget 改成返回 Promise 并注册一个取状态的方法；`main.js` 的 `refreshUpdateCheckStatus` 与 `installUpdateStatusChannel` 改成调 ArkTS；`UpdateChecker.ets` 与 `main.js` 的文件名配对约定（第 4 节的常量表）随之作废。
+
+这项替换尚未实施。deeplink 队列同属文件中转，但方向是 ArkTS 推 JS，`callArkTSFunction` 帮不上，详见 `docs/asar-customization-runtime.md` 第 11.3 节。

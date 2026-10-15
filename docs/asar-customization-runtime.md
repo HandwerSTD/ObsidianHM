@@ -2,13 +2,15 @@
 
 # asar 定制的归属决策
 
-本文件对仓库在 Obsidian 1.12.7 上做过的全部定制逐项说明最终归属。后续沿用的原则是向官方对齐：能由外层施加的走运行时注入，属于产品层面改写的一律放弃，asar 保持官方原版。
+本文件对仓库在 Obsidian 内核上做过的全部定制逐项说明最终归属。后续沿用的原则是向官方对齐：能由外层施加的走运行时注入，属于产品层面改写的一律放弃，asar 保持官方原版。
+
+内核现为 1.14.4。本文件最初的判定是在 1.12.7 的定制版 asar 上做的，随后 1.13.4 与 1.14.4 的官方原版各复核一轮，结论一致。承载内核的运行时已更新到 v34.8.5，复核情况见第 11 节。
 
 运行时注入指由外层引导脚本（`web_engine/src/main/resources/resfile/resources/app/main.js`）或由它注入渲染进程的脚本施加改动。这样升级内核时不需要因为官方改写而重新定位这些改动。
 
-本文件的判定已完成设备实测验证，实测细节见 `docs/runtime-inject-verification.md`。第 1 节的判定依据是官方内部机制的摘要，完整记录集中在 `docs/obsidian-internals.md`。实测确认：官方原版 asar 能被加载运行，外层注入能执行，remote 能被开启，设备上的 Electron 真实版本为 `5.0.0-Release`。
+本文件的判定已完成设备实测验证，实测细节见 `docs/runtime-inject-verification.md`。第 1 节的判定依据是官方内部机制的摘要，完整记录集中在 `docs/obsidian-internals.md`。实测确认：官方原版 asar 能被加载运行，外层注入能执行，remote 能被开启。
 
-asar 与官方原版逐字节一致，md5 `a2bde3f94594c1d697492998ea6e20aa`，27477966 字节。
+asar 与官方原版逐字节一致，md5 `a2bde3f94594c1d697492998ea6e20aa`，27477966 字节。这条基准跨运行时换版保持有效，运行时本身已更新到 v34.8.5，见第 11 节。
 
 ## 1. 判定依据
 
@@ -692,17 +694,19 @@ await l.dialog.showMessageBox(t, {
 
 ## 8. 外层引导脚本的七项定制
 
-`web_engine/src/main/resources/resfile/resources/app/main.js` 共 1186 行，不随官方内核升级变化。它承载七项定制，全部已经是运行时注入，不需要迁移。本节记录每一项的接口与升级时的复核点。
+`web_engine/src/main/resources/resfile/resources/app/main.js` 共 1386 行，不随官方内核升级变化。它承载七项定制，全部已经是运行时注入，不需要迁移。本节记录每一项的接口与升级时的复核点。
 
 | 项 | 位置 | 依赖的官方接口 |
 |----|------|----------------|
-| 回收站兼容 | `installHarmonyTrashCompat()`（265 行） | `electron.shell.trashItem` |
-| PDF 字体兼容 | `FONT_FACE_GUARD_SOURCE` + `installFontFaceGuard()`（590、735 行） | `app.on('browser-window-created')`、`webContents.executeJavaScript` |
-| deeplink 队列派发 | `DEEPLINK_QUEUE_FILE` + `pollDeeplinkQueue()` + `dispatchDeeplink()`（1015 行起） | `app.on('open-url')` 的监听计数 |
-| 检测更新的结果读取与触发通道 | `UPDATE_CHECK_FILE` + `refreshUpdateCheckStatus()` + `installUpdateStatusChannel()` + `installUpdateCheckNowChannel()`（836、848 行起） | 无。文件名与 `UpdateChecker.ets` 共用，详见 `docs/update-check.md` |
-| 自动更新短路 | `queueUpdate`（395 行） | `updateEvents` 事件 |
-| remote 开启 | `app.on('web-contents-created', ...)`（68 行） | `@electron/remote` 的 `enable()` |
-| `PATH` 追加 | `extendPathEnv()`（31 行） | `process.env` |
+| 回收站兼容 | `installHarmonyTrashCompat()`（290 行） | `electron.shell.trashItem` |
+| PDF 字体兼容 | `FONT_FACE_GUARD_SOURCE` + `installFontFaceGuard()`（700、852 行） | `app.on('browser-window-created')`、`webContents.executeJavaScript` |
+| deeplink 队列派发 | `DEEPLINK_QUEUE_FILE` + `pollDeeplinkQueue()` + `dispatchDeeplink()`（1153、1171、1204 行） | `app.on('open-url')` 的监听计数 |
+| 检测更新的结果读取与触发通道 | `UPDATE_CHECK_FILE` + `refreshUpdateCheckStatus()` + `installUpdateStatusChannel()` + `installUpdateCheckNowChannel()`（961、975、1219、1237 行） | 无。文件名与 `UpdateChecker.ets` 共用，详见 `docs/update-check.md` |
+| 自动更新短路 | `queueUpdate`（505 行） | `updateEvents` 事件 |
+| remote 开启 | `app.on('web-contents-created', ...)`（92 行） | `@electron/remote` 的 `enable()` |
+| `PATH` 追加 | `extendPathEnv()`（36 行） | `process.env` |
+
+该文件另有 28 处 `vlog` 探针，是 v34.8.5 换版期间的诊断手段，见第 10 节末条。
 
 ### 8.1 回收站兼容
 
@@ -732,7 +736,7 @@ app.on('browser-window-created', function (event, window) {
 
 ### 8.3 deeplink 队列派发
 
-ArkTS 到 Electron 主进程之间只有 `ExecuteCommand` 一条通道，它只覆盖窗口管理，送不进 `open-url`；而本版本的 Electron 也没有原生协议处理与单实例转发。因此由两侧共同完成链路：
+ArkTS 到 Electron 主进程之间只有 `ExecuteCommand` 一条通道，它只覆盖窗口管理，送不进 `open-url`；而 Electron 也没有原生协议处理与单实例转发。因此由两侧共同完成链路：
 
 - ArkTS 侧 `electron/src/main/ets/utils/DeeplinkBridge.ets` 把链接追加写入 `getApplicationContext().filesDir` 下的 `obsidian-deeplink.pending`。追加而不覆盖：应用未运行时收到的多条链接要能全部保留。
 - ArkTS 侧 `EntryAbility.ets` 的 `onCreate` 与 `onNewWant` 都调 `captureDeeplink(want)`。`onCreate` 里必须在 `super.onCreate` 之前调用，因为 `WebAbility` 会把 `want.uri` 当作起始页面地址读走。`extractAndStrip` 取出链接后把 `want.uri` 置空。
@@ -741,7 +745,7 @@ ArkTS 到 Electron 主进程之间只有 `ExecuteCommand` 一条通道，它只�
 
 文件名的约定两端共用：`DeeplinkBridge.ets` 里的常量注释写明改名需要同时修改外层 `main.js`。
 
-升级时无需改动。
+升级时无需改动。v34.8.5 下重测过 `ExecuteCommand` 各命令，结论一致，见 11.2 节。新运行时提供的 `callArkTSFunction` 是 Electron 调 ArkTS 的方向，帮不上这一项（见 11.3 节）。
 
 #### `ExecuteCommand` 不可透传的实测结论
 
@@ -753,9 +757,17 @@ ArkTS 到 Electron 主进程之间只有 `ExecuteCommand` 一条通道，它只�
 | `kNewWebContent`（type=1） | 参数被丢弃，无任何可见效果 |
 | `kNewWidget`（type=2） | 返回空对象，`url` 与 `user_data` 均无效果 |
 
-其余四个无需实测：`kGetWidget`、`kGetLastActiveWidget` 是窗口查询，`kAppQuit` 退出进程，`kNewWindow` 是窗口创建命令，url 只交给 Chromium 页面加载器，主进程 JS 拿不到它（且代价是开新窗口）。
+其余四个无需实测：`kGetWidget`、`kGetLastActiveWidget` 是窗口查询，`kAppQuit` 退出进程，`kNewWebContent` 之外的那个 `kNewWindow` 是窗口创建命令，url 只交给 Chromium 页面加载器，主进程 JS 拿不到它（且代价是开新窗口）。
 
-结论：`ExecuteCommand` 的参数在原生桥即被消化，进不了 Electron 主进程的 JS。ArkTS 向 Electron 传递数据只有文件中转一条通路（deeplink 队列与检测更新的两个通道都走它）。此结论已实测排除，后续升级无需再探。
+结论：`ExecuteCommand` 的参数在原生桥即被消化，进不了 Electron 主进程的 JS。此结论已在两个运行时上各测一轮，详见第 11.2 节，不随运行时换版失效。
+
+#### `app.emit('open-url')` 会命中两个监听
+
+asar 注册了两处 `open-url`：一处是 `app.once(...)`，挂在冷启动缓冲流程上，把链接暂存进变量；另一处是 `app.on(...)`，真正调用 `Ze(url)` 处理。外层 `dispatchDeeplink` 用 `app.emit('open-url', url)` 派发，同一条链接会同时命中这两个监听。
+
+链接打不开时（找不到仓库这类）内部处理会同步抛异常，弹窗因此出现两次。这个行为来自 asar 自身的注册方式，与运行时版本无关，外层不改官方代码就无法避免。`main.js` 的 `DEEPLINK_QUEUE_FILE` 上方注释写明了这一点。
+
+是否需要处理取决于实际是否复现，需要时在这一处区分：派发前摘掉那个 `once` 监听，或改走其它入口。
 
 ### 8.4 检测更新的两个通道
 
@@ -778,6 +790,8 @@ ArkTS 到 Electron 主进程之间只有 `ExecuteCommand` 一条通道，它只�
 1.13.4 新增的修复。设置页默认在独立窗口打开（`settingsPopoutWindow:!0`），其渲染进程在建立后立即同步调 `remote.getCurrentWindow()`，而 asar 内部要到 `did-create-window` 才开启 remote，之间有一段空档。在 `web-contents-created` 里立即开启，这个时刻早于该 WebContents 上的任何渲染进程脚本。`getType()` 为 `webview` 的项跳过。
 
 升级到 1.14.4 时需要复核：若官方改了 remote 的开启时机（例如改成在创建时开启），这一项可以删掉；若官方引入新的窗口类别，需确认 `getType()` 的过滤条件仍然合适。
+
+这一项针对的是 asar，与运行时版本无关，v34.8.5 下未改动。设置弹窗实测正常。
 
 ### 8.7 `PATH` 追加
 
@@ -813,12 +827,101 @@ asar 保持官方原版，补丁只剩一项必须做的：**外层 `package.jso
 
 ## 10. 剩余事项
 
-以下三项与内核升级无关，属于产品层面的取舍，当前状态如下。
+以下四项与内核升级无关，属于产品层面的取舍，当前状态如下。
 
-**`disable-update` 通道恒返回 `true`。** 设备上的 Electron 是 `5.0.0-Release`，渲染进程侧的 `qy(pf, "28.2.3")` 恒为真，官方的 installer 版本过低提示会触发。覆盖该通道后提示被屏蔽，副作用是「设置 → 关于 → 自动更新」开关恒显示为关闭且拨不动（写入被忽略）。
+**`disable-update` 通道恒返回 `true`。** 旧运行时在设备上自报 Electron `5.0.0-Release`，渲染进程侧的 `qy(pf, "28.2.3")` 恒为真，官方的 installer 版本过低提示会触发。覆盖该通道后提示被屏蔽，副作用是「设置 → 关于 → 自动更新」开关恒显示为关闭且拨不动（写入被忽略）。
 
 另一条做法是在 `preload.js` 里同样改写渲染进程的 `process.versions.electron` 到 `29.0.0`，让那条判定为假，该通道即恢复官方行为。这条依赖 `preload.js` 早于 `app.js` 求值，需要一轮实测确认。
+
+新运行时的 Electron 版本号大幅提高（见 11.1），官方那条版本下限判定很可能已自然为假。这项覆盖在新运行时上是否还有必要，需要一轮实测确认再决定去留。
 
 **`starter` 与 `help` 通道的处理逻辑。** 仓库版本曾把两个通道改为按发送窗口定位并就地加载页面，配合窗口复用使用。窗口复用已放弃（3.8），这项改动失去前提，当前采用官方的全局打开函数。若日后需要「起始窗口变身帮助窗口」这类行为，才需要重新引入。
 
 **「关于」页的版本号显示。** 当前经 4.4 的注入改写为 `HarmonyOS-{{version}}`。版本行的按钮已接上本仓库的更新检查（见 `docs/update-check.md`），官方那条 installer 版本过低的更新条目由注入接管为读本仓库的检测结果。
+
+**验证探针尚未摘除。** `web_engine/src/main/ets/utils/VerifyLog.ets` 是个日志类，全仓有 27 处调用它（`DeeplinkBridge` 5 处、`WebAbility` 3 处、`AppWindowAdapter` 6 处、`DialogAdapter` 3 处、`StatusBarManager` 3 处、`UpdateChecker` 3 处、`FileManagerAdapterBind` 2 处、`JsBindingUtils` 2 处），`main.js` 另有 28 处 `vlog`，每次启动都往 `obsidian.log` 写 `[OHSV]` 前缀的行。这些是 v34.8.5 换版期间的诊断手段，验证完成后应摘除或加开关，否则长期污染日志。摘除前需要确认第 8 节的各项定制不依赖它们——它们只写日志，不参与功能。
+
+## 11. v34.8.5 运行时的适配结论
+
+本节记录换到 v34.8.5 运行时之后，本文件各项结论的复核情况。完整过程见 `docs/runtime-upgrade-34.md`。
+
+### 11.1 运行时基线
+
+| 项 | 值 |
+|----|----|
+| 运行时包 | `v34.8.5-20260729.1-release` |
+| Chromium | `132.0.6834.161` |
+| Node | `v20.18.1` |
+| Electron 自报值 | 旧运行时为 `5.0.0-Release`，新运行时不再需要改写 |
+
+新运行时的预编译产物是三个库：`libelectron.so`（166750776 字节）、`libadapter.so`（5517992）、`libffmpeg.so`（2181544）。不再需要 `libc++_shared.so` 与 `libextractor.so`。
+
+第 8.7 节的 `PATH` 追加、`3.5` 的关窗到托盘、`2` 决策表里判为运行时注入的全部项目都不依赖运行时内部实现，换版后未改动，实测正常。
+
+`asar` 一侧完全没有动，仍是官方 1.14.4 发布版，md5 与 1.14.4 基准一致。本文件的全部判定依据不受换版影响。
+
+### 11.2 `ExecuteCommand` 与 `open-url` 的复核
+
+在新运行时上重测了 8.3 节的结论，结论一致：
+
+- `kOpenURL`（type=5）**仍然不发射 `open-url`**。埋点「probe NATIVE open-url received」在多轮运行中命中 0 次，同一时刻命中的是「probe open-url observed, source=our-own-emit」，即外层自己 emit 的回声。
+- `kSecondInstance` 事件**能触发**，但参数在 native 侧丢失：ArkTS 发 `argv=["electron"]`，JS 收到 `argv=[]`。
+
+所以 deeplink 的文件中转队列在新运行时上仍是必需的，8.3 节的两侧链路照旧。
+
+下一步的探查方向是把 `second-instance` 的四个参数全部打出来，看链接是否在 `additionalData` 里：
+
+```js
+app.on('second-instance', function (event, argv, cwd, additionalData) {
+    vlog('probe second-instance argv=' + JSON.stringify(argv) +
+        ' cwd=' + JSON.stringify(cwd) +
+        ' additionalData=' + JSON.stringify(additionalData));
+});
+```
+
+### 11.3 新运行时带来的新通道：`callArkTSFunction`
+
+新运行时提供了 `callArkTSFunction`——Electron 主进程可以直接调 ArkTS 函数并拿到返回值，实测返回 `{"type":"string","value":"ets bridge adapter"}`。承载它的是新模板的 `web_engine/src/main/ets/adapter/EtsBridgeAdapter.ets`。
+
+这一项改变了 8.3 节「ArkTS 向 Electron 传递数据只有文件中转一条通路」的结论，但只改了一半。`callArkTSFunction` 是单向的：Electron JS 调 ArkTS，ArkTS 调不动 JS。对照两个方向的用途：
+
+| 方向 | 现状 | `callArkTSFunction` 能否替代 |
+|------|------|------------------------------|
+| 检测更新：ArkTS 查完结果告诉 JS | `update-check.json`，主进程每 500ms 轮询 | 能。改成关于页发问时按需拉取，两个中转文件和两个定时器都能删 |
+| deeplink：ArkTS 被动收到链接推给 JS | `obsidian-deeplink.pending`，主进程每 500ms 轮询 | 不能。这是真正的推送需求，`callArkTSFunction` 的方向相反 |
+
+替换检测更新的具体做法见第 8 节与 `docs/update-check.md`。deeplink 要么继续走文件队列，要么另找一条 ArkTS 主动推 JS 的通道，`second-instance` 是一个待验证的候选。
+
+### 11.4 随新运行时移除的 ArkTS 适配器
+
+新模板删掉了九个适配器及其绑定：`BatteryAdapter`、`CloudSyncAdapter`、`GeolocationAdapter`、`NetConnectionAdapter`、`OcrAdapter`、`PowerMonitorAdapter`、`ScreenlockMonitorAdapter`、`TrashAdapter`、`DeviceInfoAdapterBind`。判定依据与它们各自能力的实测结果见 `docs/runtime-upgrade-34.md` 第 4.2 节。
+
+其中 `TrashAdapter` 与 `CloudSyncAdapter` 需要特别说明，避免日后误判：
+
+- **回收站走的是 `FileManagerAdapter.DeleteFileToTrash`，不是 `TrashAdapter`。** `obsidian.log` 里的调用记录是 `FileManagerAdapter#deleteFileToTrash("...")`。新模板的 `FileManagerAdapterBind.ets` 注册了七条方法，比旧仓库多六条。8.1 节的回收站兼容逻辑不受影响，它包装的是 `electron.shell.trashItem`。
+- **`CloudSync.*` 在两个运行时的 `libelectron.so` 与 asar 里都搜不到调用方。** 4.7 节隐藏的是设置页的入口显示，与这套 JSBind 无关。
+
+### 11.5 权限清单
+
+`web_engine/src/main/module.json5` 的权限清单按新模板重新合并过，两项关键权限必须保留：
+
+| 权限 | 缺失后果 |
+|------|----------|
+| `ohos.permission.CUSTOM_SANDBOX` | 沙箱路径受限 |
+| `ohos.permission.READ_WRITE_USER_FILE` | 读用户目录报 `EPERM` |
+
+漏掉第二项的症状是冷启动扫描仓库的 `.obsidian/plugins` 时报 `EPERM`。权限在安装时授予，改完 `module.json5` 必须重装才生效。
+
+`READ_WRITE_USER_FILE` 是受限开放权限，system_grant 不弹窗，本地调试直接声明即可。上架时 AGC 按「应用为 IDE 或其他开发调测工具，需要读写 PC/2in1 设备上的用户目录」审核申请理由。
+
+同时去掉了 `DISTRIBUTED_DATASYNC`——它配合跨设备接续，本项目已删除 `continuable` 配置。完整清单见 `docs/runtime-upgrade-34.md` 第 6 节。
+
+### 11.6 托盘反色与窗口阴影的实现位置
+
+这两项在新运行时上需要 ArkTS 侧配合，实现位置如下：
+
+**托盘图标反色**在 `web_engine/src/main/ets/adapter/StatusBarManager.ets`。调用方只给白色图标时，状态栏在浅色背景下取黑色那份，直接复用白图会看不见，因此外层把白色图标逐像素反色成黑色。alpha 通道保持原样，轮廓与抗锯齿边缘不变，只黑白互换。
+
+**窗口阴影**在 `web_engine/src/main/ets/adapter/AppWindowAdapter.ets` 的 `showWindow` 里覆写，调 `setWindowShadow(id, true)`。日志确认覆写生效。
+
+`AppWindowAdapter` 另有一处不等价：旧仓库的 `applyWindowTitleButtonVisible` 与 `showWindowTitleButtons` 两个私有方法在新模板里没有，改为在 `setMaximizable`、`setMinimizable`、`setClosable` 三处内联同样的 `setWindowTitleButtonVisible(...)` 调用，并新增 `setWindowButtonVisibility(id, visible)` 覆盖「三个全开」的场景。3.10 节的隐藏自绘按钮逻辑能力等价，未改动。

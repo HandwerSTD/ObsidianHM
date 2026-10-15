@@ -13,6 +13,7 @@ description: 升级 ObsidianHM 内置的 Obsidian 内核版本（升级 asar、�
 - 归属判定与最终状态：`docs/asar-customization-runtime.md`
 - 实测记录：`docs/runtime-inject-verification.md`
 - 升级过程积累的官方两版差异与旧定制清单：`docs/asar-upgrade.md`
+- 换 Electron 运行时（与换 asar 是两件事）：`docs/runtime-upgrade-34.md`
 
 ## 先做这件事
 

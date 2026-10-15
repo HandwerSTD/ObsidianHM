@@ -278,3 +278,49 @@ disable-update 被调用，参数 （读取）
 - **三项窗口复用**（help 复用 starter、starter 复用为仓库窗口、打开最近仓库时复用 starter）在运行时没有等价接口。当前保留官方行为。
 - **`disable-update` 恒返回 `true` 对「自动更新」开关的影响。** 渲染进程读该通道的返回值为真时开关显示为关闭，用户拨动开关时写入被忽略。需要确认这符合预期：自动更新本来就由外层 `queueUpdate` 短路，开关只影响界面状态。另一条做法是在 `preload.js` 里同样改写渲染进程的 `process.versions.electron` 到 `29.0.0`，使官方的 `qy(pf, "28.2.3")` 判定为假，该通道即恢复官方行为。这条依赖 `preload.js` 早于 `app.js` 求值，需要一轮实测确认。
 - **界面项**：托盘图标显示、「华为云同步」页内容、「退出软件」开关、「关于」页的版本与贡献作者条目、PDF 渲染、`obsidian://` 派发。这些需要看着界面确认。
+
+## 9. v34.8.5 运行时上的复核
+
+本节记录换到 v34.8.5 运行时之后，第 5 节到第 8 节的结论复核情况。完整换版过程见 `docs/runtime-upgrade-34.md`。
+
+第 1 节到第 4 节的最小验证结论不受影响：官方原版 asar 仍能加载运行，外层注入仍能执行，诊断输出写 `obsidian.log` 这条仍然成立。
+
+### 9.1 版本下限检查
+
+旧运行时在设备上自报 Electron `5.0.0-Release`，低于官方 asar 入口的下限阈值，`if(fo<18){` 会触发，因此改写 `process.versions.electron` 是必需步骤。新运行时是 Chromium 132 / Node 20.18.1，版本号大幅提高。
+
+外层的版本改写逻辑未改动。需要确认的是它现在是否已无必要，以及第 8.5 节「`disable-update` 恒返回 `true`」的覆盖是否还能摘掉——后者的前提是渲染进程的 `qy(pf, "28.2.3")` 判定为假，而那取决于渲染进程读到的 `process.versions.electron`。
+
+### 9.2 `ExecuteCommand` 与 `open-url`
+
+重测结论与旧运行时一致，`docs/asar-customization-runtime.md` 第 8.3 节的链路仍必需：
+
+- `kOpenURL`（type=5）不发射 `open-url`。埋点「probe NATIVE open-url received」在多轮运行中命中 0 次，同一时刻命中的是「probe open-url observed, source=our-own-emit」。
+- `kSecondInstance` 事件能触发，ArkTS 发 `argv=["electron"]`、JS 收到 `argv=[]`，参数在 native 侧丢失。
+
+### 9.3 `callArkTSFunction`
+
+新运行时提供的能力，Electron 主进程直接调 ArkTS 函数并拿返回值：
+
+```
+[OHSV] callArkTSFunction 返回 {"type":"string","value":"ets bridge adapter"}
+```
+
+方向是 Electron 调 ArkTS。检测更新与 deeplink 的文件中转都是 ArkTS 送数据给 JS，方向相反，只能替代其中一半。分析见 `docs/asar-customization-runtime.md` 第 11.3 节与 `docs/update-check.md` 第 8 节。
+
+### 9.4 端到端结果
+
+用户在合回主仓库后完成端到端验证，`devecocli build` 与 `devecocli run --skip-build` 均通过。冷启动打开 `/storage/Users/currentUser/Workspace/Obsidian/ObsidianNotes` 不再报 `EPERM`（权限补齐 `CUSTOM_SANDBOX` 与 `READ_WRITE_USER_FILE` 之后）。PDF 字体正常。
+
+回收站的验证做在新工程里，合并前完成：
+
+```
+[OHSV] trash requested path=/storage/Users/currentUser/Workspace/Obsidian/DevOnHarmonyOS/未命123名.md
+[OHSV] trash result=true path=/storage/Users/currentUser/Workspace/Obsidian/DevOnHarmonyOS/未命123名.md
+```
+
+同期的 hilog 显示实际调用是 `FileManagerAdapter#deleteFileToTrash`，印证了 `TrashAdapter` 已被 native 层取代。
+
+deeplink 用 `show-plugin` 测试不弹窗属预期。`open?vault=test` 是否弹两次尚未确认，对应第 8.3 节末尾新记的「两个监听」那条。
+
+第 8.5 节列的三项仍未验证。

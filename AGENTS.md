@@ -114,7 +114,7 @@ devecocli run --skip-build --device 127.0.0.1:42021
 | build-profile.json5             | 含签名凭据，已 gitignore |
 | tools/node_modules/、oh_modules/ | 依赖目录              |
 
-`web_engine/src/main/resources/resfile/resources/app/node_modules/` 是例外，它被跟踪（35 个文件，内容是 `@electron/remote`）。`main.js` 运行时要加载它，因此必须随包发布。改依赖时注意这一点。
+`web_engine/src/main/resources/resfile/resources/app/node_modules/` 是例外，它被跟踪（`@electron/remote` 28 个文件、`btime`、`get-fonts` 两个原生 addon）。`main.js` 运行时要加载它，因此必须随包发布。改依赖时注意这一点。
 
 `obsidian.asar` 由 Git LFS 追踪（`.gitattributes` 中有 `*.asar filter=lfs`）。推送时若报缺少 LFS 对象，用 `git lfs fetch --all` 补齐。
 
@@ -127,8 +127,9 @@ devecocli run --skip-build --device 127.0.0.1:42021
 | 文档                                            | 内容                                                     |
 | --------------------------------------------- | ------------------------------------------------------ |
 | docs/obsidian-internals.md                    | 官方内部机制：44 个通道、全局对象、i18n 取词、设置页结构、标题栏、版本号、平台差异、读压缩代码的方式 |
-| docs/asar-customization-runtime.md            | 每一项定制的归属判定与依据                                          |
-| docs/runtime-inject-verification.md           | 设备实测记录                                                 |
+| docs/asar-customization-runtime.md            | 每一项定制的归属判定与依据。第 11 节是 v34.8.5 运行时的复核结论与新通道               |
+| docs/runtime-inject-verification.md           | 设备实测记录。第 9 节是 v34.8.5 上的复核                              |
+| docs/runtime-upgrade-34.md                    | 运行时全量更新到 v34.8.5 的过程：版本基线、替换范围、定制的搬运、同步方式、踩过的坑    |
 | docs/asar-upgrade.md                          | 构建期打补丁路线（已停用）。第 3、4 节记录官方两版差异与 1.12.7 的定制清单，仍有参考价值     |
 | .agents/skills/obsidian-asar-upgrade/SKILL.md | 升级内核的完整流程，含注入点与官方接口的对照表                                |
 | tools/README.md                               | 符号定位工具的说明                                        |
