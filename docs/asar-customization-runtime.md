@@ -795,13 +795,13 @@ asar 注册了两处 `open-url`：一处是 `app.once(...)`，挂在冷启动缓
 
 ### 8.7 `PATH` 追加
 
-Electron 运行时的 `PATH` 来自系统，设备上实测为 `/data/app/bin:/data/service/hnp/bin:/data/app/bin:/data/service/hnp/bin:/usr/local/bin:/bin:/usr/bin:/system/bin:/vendor/bin`（见 `docs/runtime-inject-verification.md`）。本机安装的命令行工具在 `/storage/Users/currentUser/.harmonybrew/bin`，默认不在其中。
+Electron 运行时的 `PATH` 来自系统，设备上实测为 `/data/app/bin:/data/service/hnp/bin:/data/app/bin:/data/service/hnp/bin:/usr/local/bin:/bin:/usr/bin:/system/bin:/vendor/bin`（见 `docs/runtime-inject-verification.md`）。本机安装的命令行工具在 `/storage/Users/currentUser/.harmonybrew/bin` 与 `/storage/Users/currentUser/npm/bin`，默认都不在其中。
 
 HarmonyOS 限制 `/usr/bin` 不会挂载进应用，`/bin` 与 `/usr/bin` 这两个取值在应用进程里取不到命令，直到 7.0.0.107 都是如此。这个前缀由系统给出，外层不做增删。
 
-`main.js` 在加载 asar 之前把该目录追加到 `process.env.PATH` 的末尾，去重后不做存在性检查。追加写在进程环境上，主进程之后 `require('child_process')` 派生的进程继承同一份 `PATH`。
+`main.js` 在加载 asar 之前把这两个目录追加到 `process.env.PATH` 的末尾，逐项去重后不做存在性检查。追加写在进程环境上，主进程之后 `require('child_process')` 派生的进程继承同一份 `PATH`。
 
-渲染进程由 nativespawn 拉起，环境块与主进程相互独立，这份追加到达不了渲染进程。`inject/preload.js` 在本进程内做同一追加（同样的去重与不检查存在性），改的是渲染进程自己的 `process.env`，DevTools 控制台读到的取值随之包含该目录。子进程继承的是拉起它的进程的环境，渲染进程经 `child_process` 派生的进程同样继承追加后的取值。
+渲染进程由 nativespawn 拉起，环境块与主进程相互独立，这份追加到达不了渲染进程。`inject/preload.js` 在本进程内做同一追加（同样的逐项去重与不检查存在性），改的是渲染进程自己的 `process.env`，DevTools 控制台读到的取值随之包含这两个目录。子进程继承的是拉起它的进程的环境，渲染进程经 `child_process` 派生的进程同样继承追加后的取值。
 
 升级时无需改动。
 

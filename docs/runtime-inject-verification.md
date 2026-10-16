@@ -206,6 +206,8 @@ HarmonyOS port: desktop auto-update is disabled
 
 `child_process.execSync` 看到的取值与主进程一致，说明环境写在进程上并被派生进程继承。系统给定的取值里 `/usr/bin` 实际不挂载进应用，`hdc shell` 里的 `PATH` 与这里也不相同：设备 shell 是 `shell` 身份（`uid=2000`），应用进程是应用沙箱身份，两者看到的环境本就不一样。
 
+后续追加了 `/storage/Users/currentUser/npm/bin`，主进程与渲染进程各自追加的目录清单见 `docs/asar-customization-runtime.md` 8.7 节；渲染进程侧的实测见同文件 8.7 节与本文件后续轮次的记录。
+
 **`window.require('obsidian')` 在设备上抛 `Cannot find module 'obsidian'`。** 完整报错是：
 
 ```

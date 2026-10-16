@@ -35,13 +35,23 @@
 
   // 渲染进程的 PATH。渲染进程由 nativespawn 拉起，环境块与主进程相互独立，
   // 外层 main.js 的追加到达不了这里，需要在本进程内补一次。
-  // 该目录在设备上是否存在由使用环境决定，因此这里只做追加，不检查存在性。
-  var HARMONYBREW_BIN = '/storage/Users/currentUser/.harmonybrew/bin';
+  // 两个目录在设备上是否存在由使用环境决定，因此这里只做追加，不检查存在性。
+  var EXTRA_PATH_DIRS = [
+    '/storage/Users/currentUser/.harmonybrew/bin',
+    '/storage/Users/currentUser/npm/bin'
+  ];
   try {
     if (typeof process !== 'undefined' && process.env) {
-      var currentPath = process.env.PATH || '';
-      if (currentPath.split(':').indexOf(HARMONYBREW_BIN) < 0) {
-        process.env.PATH = currentPath ? currentPath + ':' + HARMONYBREW_BIN : HARMONYBREW_BIN;
+      var parts = (process.env.PATH || '').split(':');
+      var added = false;
+      for (var i = 0; i < EXTRA_PATH_DIRS.length; i++) {
+        if (parts.indexOf(EXTRA_PATH_DIRS[i]) < 0) {
+          parts.push(EXTRA_PATH_DIRS[i]);
+          added = true;
+        }
+      }
+      if (added) {
+        process.env.PATH = parts.join(':');
         window.__ohsidianLog('渲染进程 PATH 已追加：' + process.env.PATH);
       }
     } else {

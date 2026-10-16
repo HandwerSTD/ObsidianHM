@@ -29,16 +29,22 @@ try {
 let {app, protocol, net, Tray, Menu, BrowserWindow} = electron;
 
 // Electron 运行时的 PATH 由系统给定。
-// 本机安装的命令行工具位于 /storage/Users/currentUser/.harmonybrew/bin，
-// 需要在 Electron 与它派生的进程里都能直接按名字调用。
-// 该目录在设备上是否存在由使用环境决定，因此这里只做追加，不检查存在性。
-const HARMONYBREW_BIN = '/storage/Users/currentUser/.harmonybrew/bin';
+// 本机安装的命令行工具位于 /storage/Users/currentUser/.harmonybrew/bin 与
+// /storage/Users/currentUser/npm/bin，需要在 Electron 与它派生的进程里
+// 都能直接按名字调用。这两个目录在设备上是否存在由使用环境决定，
+// 因此这里只做追加，不检查存在性。
+const EXTRA_PATH_DIRS = [
+	'/storage/Users/currentUser/.harmonybrew/bin',
+	'/storage/Users/currentUser/npm/bin'
+];
 (function extendPathEnv() {
-	let current = process.env.PATH || '';
-	if (current.split(':').indexOf(HARMONYBREW_BIN) >= 0) {
-		return;
+	let parts = (process.env.PATH || '').split(':');
+	for (let dir of EXTRA_PATH_DIRS) {
+		if (parts.indexOf(dir) < 0) {
+			parts.push(dir);
+		}
 	}
-	process.env.PATH = current ? current + ':' + HARMONYBREW_BIN : HARMONYBREW_BIN;
+	process.env.PATH = parts.join(':');
 })();
 
 // 最小验证探针。obsidian.log 由第 280 行的 log() 写入，而探针需要在其之前执行，
