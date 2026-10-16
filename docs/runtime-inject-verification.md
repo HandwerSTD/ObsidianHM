@@ -306,7 +306,7 @@ disable-update 被调用，参数 （读取）
 [OHSV] callArkTSFunction 返回 {"type":"string","value":"ets bridge adapter"}
 ```
 
-方向是 Electron 调 ArkTS。检测更新与 deeplink 的文件中转都是 ArkTS 送数据给 JS，方向相反，只能替代其中一半。分析见 `docs/asar-customization-runtime.md` 第 11.3 节与 `docs/update-check.md` 第 8 节。
+方向有二：Electron 调 ArkTS 拿返回值；以及把 JS Function 作为参数传入、由 ArkTS 随时调用。后者已实测通过（`EtsBridgeAdapter` 第 8 节三个用例，回调可达、payload 保类型、30 秒后仍可达）。两者均已投入使用：检测更新走 `UpdateChecker.GetStatus` / `CheckNow`，deeplink 走 `EtsBridge.SubscribeDeeplink` 回调推送，文件中转全部删除。设计、限制清单与实测细节见 `docs/ets-electron-bus.md`。
 
 ### 9.4 端到端结果
 

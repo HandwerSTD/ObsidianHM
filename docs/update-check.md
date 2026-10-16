@@ -6,37 +6,44 @@
 
 ```mermaid
 flowchart LR
-  A[ArkTS UpdateChecker] -->|GET 远端 app.json5| B[取远端 versionCode]
-  B --> C[与本机 versionCode 比较]
-  C --> D[写 filesDir/update-check.json]
-  D --> E[Electron main.js 每 500ms 轮询读文件]
-  E --> F[ohsidian-update-status 通道]
+  A[ArkTS UpdateChecker<br/>定时拉远端 versionCode] -->|检查完成| P[结果回调推送<br/>payload 带 requestId]
+  P --> H[Electron main.js<br/>handleUpdateCheckPush]
+  H --> C[刷新缓存 updateCheckStatus]
+  C --> F[ohsidian-update-status 通道]
   F --> G[dom-ready.js 接管关于页更新条目]
-  H[关于页「检查更新」按钮] -->|ohsidian-update-check-now| I[main.js 写 filesDir/update-check.now]
-  I -->|每 3 秒轮询| A
+  H -->|requestId 配对| R[resolve CheckNow 的 Promise]
+  H[关于页「检查更新」按钮] -->|ohsidian-update-check-now| I[main.js triggerUpdateCheckNow]
+  I -->|UpdateChecker.CheckNow requestId| A
 ```
 
 判定规则：远端 `app.versionCode` 大于本机时 `hasUpdate` 为真。
 
-两条流量共用一个目录：ArkTS 写结果文件，外层读；外层写触发文件，ArkTS 读。
+两条流量都走 `systemPreferences.callArkTSFunction`，全程无轮询：
+
+- **结果推送（ArkTS → JS）**：JS 启动后经 `UpdateChecker.SubscribeUpdateResult` 注册持久回调，之后每次检查完成（定时检查与手动触发的检查都算）ArkTS 主动推结果，payload 带 `requestId`。
+- **手动触发（JS → ArkTS）**：`triggerUpdateCheckNow()` 生成 `requestId`，把 `{resolve, reject, timer}` 存进 `pendingUpdateChecks` 映射表后调 `UpdateChecker.CheckNow`；结果推送到达时按 `requestId` 取回并 resolve，失败推送 reject，40 秒定时器兑底 ArkTS 侧异常失效。
+
+定时检查的推送 `requestId` 为空串，只刷新缓存，不配对 Promise。
 
 ## 2. ArkTS 侧
 
-`web_engine/src/main/ets/adapter/UpdateChecker.ets`，由 `WebAbility.onCreate` 调用 `startPolling`。
+`web_engine/src/main/ets/adapter/UpdateChecker.ets`，由 `WebAbility.onCreate` 调用 `startPolling`；AKI 绑定在 `web_engine/src/main/ets/jsbindings/UpdateCheckerBind.ets`，由 `JsBindingMethod.bind()` 注册。
 
 | 项 | 值 |
 |----|-----|
 | 远端地址 | `https://raw.gitcode.com/handwer/ObsidianHM/raw/main/AppScope/app.json5` |
 | 首次检查 | 启动后延迟 30 秒 |
 | 检查间隔 | 6 小时（`setInterval`） |
-| 触发文件轮询 | 3 秒（`setInterval`），与上面的定时检查各跑各的 |
+| 结果存放 | 适配器实例字段 `lastResult`（内存） |
+| AKI 绑定 | `UpdateChecker.SubscribeUpdateResult`（注册持久回调）、`UpdateChecker.CheckNow`（触发检查，参数 requestId） |
+| 结果推送 | `checkOnce` 完成后经回调推 `{type:'result', requestId, result}`；失败时若来自 CheckNow 则推 `{type:'error', requestId, message}` |
 | 解析 | `JSON.parse`，取 `app.versionCode` |
 | 本机版本 | `bundleManager.getBundleInfoForSelfSync(GET_BUNDLE_INFO_DEFAULT).versionCode` |
-| 结果文件 | `getApplicationContext().filesDir + '/update-check.json'` |
-| 触发文件 | `getApplicationContext().filesDir + '/update-check.now'` |
 | 网络权限 | `ohos.permission.INTERNET`，已在 `web_engine/src/main/module.json5` |
 
-结果文件内容：
+注册回调时已有结果会立即推一次，JS 侧据此初始化缓存。拉取与解析失败只记日志，不更新 `lastResult`，上一次的结果保留。
+
+结果 JSON 结构：
 
 ```json
 {
@@ -47,41 +54,29 @@ flowchart LR
 }
 ```
 
-`checkedAt` 是写入时刻的毫秒数，外层用它判断文件是否被重写。
+`checkedAt` 是写入时刻的毫秒数，外层用它判断结果是否更新。
 
-拉取与解析失败只记日志，不抛出，不写结果文件。上一次的结果因此保留。
+`GetStatus` 没有结果时返回空串。拉取与解析失败只记日志，不更新 `lastResult`，上一次的结果保留。
 
-手动触发的处理在 `checkTriggerFile`：触发文件存在时先删掉，再调 `checkOnce`。删除排在检查之前，拉取失败也不会让文件积压成下一轮重复触发。
+## 3. CheckNow 的同步边界
 
-## 3. 解析远端清单
+AKI 绑定要求 ArkTS 函数同步返回，而 HTTP 只有异步接口；同步等待完成（忙等或休眠）会阻塞 ArkTS 单线程事件循环，HTTP 完成回调永远进不来。因此 `CheckNow(requestId)` 只负责触发（调 `checkOnce(requestId)` 即返回），结果经结果回调推送回 JS，由 `pendingUpdateChecks` 映射表按 `requestId` 配对 resolve。实测从触发到 Promise resolve 约 650 毫秒（纯网络耗时）。
+
+## 4. 解析远端清单
 
 远端 `AppScope/app.json5` 由本仓库控制，约定保持纯 JSON（无注释、无尾逗号），因此直接用 `JSON.parse`。不必为此引入 JSON5 解析库：`@wolfx/json5` 是 bytecode HAR，引入它需要把工程级 `useNormalizedOHMUrl` 改为 true，会切换全工程的 ohmurl 格式。
 
 解析位置在 `UpdateChecker.ets` 的 `checkOnce`。将来远端清单确实需要写注释时，在那里先剥离注释再解析，不要改 `useNormalizedOHMUrl`。
 
-## 4. 目录约定
-
-`app.getPath('userData')` 与 `getApplicationContext().filesDir` 指向设备上同一个目录（应用级 `files/`）。两端靠这个约定交接，与 deeplink 队列（`obsidian-deeplink.pending`）一致。改文件名需要同时改 `UpdateChecker.ets` 与 `main.js`。
-
-两个文件名各自有命名常量，配对关系如下：
-
-| 文件 | `UpdateChecker.ets` | `main.js` |
-|------|---------------------|-----------|
-| 结果（ArkTS 写，外层读） | `RESULT_FILE_NAME` | `UPDATE_CHECK_FILE` |
-| 触发（外层写，ArkTS 读） | `TRIGGER_FILE_NAME` | `UPDATE_CHECK_TRIGGER_FILE` |
-
-传输只能走文件：Electron 的渲染进程里没有按名调用 ArkTS 绑定的入口，`JsBindingUtils` 注册的名字仅供运行时 C++ binding 内部反查。
-
-这一条在 v34.8.5 运行时下已经不成立，见 8 节。
-
-## 5. 外层读取
+## 5. 外层
 
 `web_engine/src/main/resources/resfile/resources/app/main.js`：
 
-- `readUpdateCheckStatus()` 读文件并 `JSON.parse`，失败返回 `null`。
-- `refreshUpdateCheckStatus()` 每 500ms 执行，`checkedAt` 变化时刷新模块级缓存 `updateCheckStatus` 并记一条日志。
+- `callArkts(method, returnType, params)` 是 `callArkTSFunction` 的封装，无参调用也要传空数组——`paramArray` 为 `undefined` 时运行时 reject（`Expected parameter array`）。
+- `subscribeUpdateResult()` 在 `app.whenReady()` 后经 `UpdateChecker.SubscribeUpdateResult` 注册持久结果回调；`handleUpdateCheckPush` 解析推送，刷新 `updateCheckStatus` 缓存，并按 `requestId` 配对 resolve/reject。
+- `triggerUpdateCheckNow()` 生成 `requestId`，返回在结果推送到达时 resolve 的 Promise；40 秒定时器兑底。
 - ipcMain 通道 `ohsidian-update-status` 返回缓存，注册位置在 `loadApp()` 之后的通道注册区。通道名与官方无重名。
-- ipcMain 通道 `ohsidian-update-check-now`（`installUpdateCheckNowChannel`）写触发文件 `update-check.now`，内容为时间戳字符串，返回布尔值表示写入是否成功。写入用 `fs.writeFileSync`，失败记日志并返回 `false`。该通道注册在同一区域，通道名与官方无重名。
+- ipcMain 通道 `ohsidian-update-check-now`（`installUpdateCheckNowChannel`）调 `triggerUpdateCheckNow()`，返回布尔值表示调用是否发起成功。该通道注册在同一区域，通道名与官方无重名。
 
 ## 6. 关于页显示
 
@@ -105,7 +100,7 @@ flowchart LR
 
 版本行本身由官方维护，`render` 里调 `updateVersionSetting()` 重建按钮。`patchAbout` 在官方 render 之后把该按钮的 `clickCallback` 换成：
 
-1. `sendSync('ohsidian-update-check-now')`，请外层写下触发文件；
+1. `sendSync('ohsidian-update-check-now')`，请外层触发 `UpdateChecker.CheckNow`；
 2. 弹一条「正在检查更新...」提示；
 3. 每 1 秒读一次 `ohsidian-update-status`，最多 30 次，`checkedAt` 变化即认为结果落地；
 4. 调关于页对象的 `update()` 重画该页，更新条目的 `visible` 随之重算，然后提示「发现新版本」或「已是最新版本」。
@@ -128,20 +123,3 @@ flowchart LR
 当前 `versionCode` 是 `11404001`，按上面的分段读出 `1|14|04|001`，对应 `versionName` `1.14.4.1`。
 
 本项目只改 AppScope 的 `versionCode` 与 `versionName`；`appPatch` 递增时 `versionName` 的第四段同步递增。
-
-## 8. 迁移到 `callArkTSFunction`
-
-v34.8.5 运行时提供了 `callArkTSFunction`：Electron 主进程可以直接调 ArkTS 函数并拿到返回值，承载它的是新模板的 `web_engine/src/main/ets/adapter/EtsBridgeAdapter.ets`。实测返回 `{"type":"string","value":"ets bridge adapter"}`。
-
-它改写了第 4 节「传输只能走文件」的结论。这套机制的两条流量方向相反，需要分别判断：
-
-| 流量 | 方向 | `callArkTSFunction` 能否替代 |
-|------|------|------------------------------|
-| 结果：ArkTS 查完告诉 JS | ArkTS → JS | 能。改成主进程按需拉取 |
-| 触发：JS 请 ArkTS 立即查一次 | JS → ArkTS | 能，而且更直接 |
-
-替代方案：关于页发问时，渲染进程经 ipc 通道到主进程，主进程 `await callArkTSFunction('UpdateChecker.GetStatus', 'string')` 拿到结果。这样 `update-check.json` 与 `update-check.now` 两个文件、500 毫秒与 3 秒两个 `setInterval` 都可以删掉，HTTP 请求变成请求时发起。
-
-要改的地方：`UpdateChecker.ets` 的 `checkOnce` 从 fire-and-forget 改成返回 Promise 并注册一个取状态的方法；`main.js` 的 `refreshUpdateCheckStatus` 与 `installUpdateStatusChannel` 改成调 ArkTS；`UpdateChecker.ets` 与 `main.js` 的文件名配对约定（第 4 节的常量表）随之作废。
-
-这项替换尚未实施。deeplink 队列同属文件中转，但方向是 ArkTS 推 JS，`callArkTSFunction` 帮不上，详见 `docs/asar-customization-runtime.md` 第 11.3 节。

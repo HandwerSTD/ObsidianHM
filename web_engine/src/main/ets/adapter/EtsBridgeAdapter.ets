@@ -38,6 +38,7 @@ import { injectable, inject } from 'inversify';
 import { BaseAdapter } from '../common/BaseAdapter';
 import LogUtil from '../utils/LogUtil';
 import LogMethod from '../common/LogDecorator';
+import { VerifyLog } from '../utils/VerifyLog';
 
 const TAG: string = 'EtsBridgeAdapter';
 
@@ -296,5 +297,66 @@ export class EtsBridgeAdapter extends BaseAdapter {
             arr.push(`item_${i}`);
         }
         return arr;
+    }
+
+    // ============================================================
+    // Section 8: 回调参数机制
+    //   验证 JS Function 作为参数传入 ArkTS 后的三个问题：
+    //   可达性（ArkTS 能否调它）、payload 类型、Function 引用保活。
+    //   接口文档第五章说「暂不支持传入 Function 类型参数」，
+    //   本文件头注释则记录了 function/function0 的完整支持，两者矛盾，
+    //   以设备实测裁决。
+    // ============================================================
+
+    /**
+     * 2 秒后调用传入的回调，payload 为 string。
+     * 覆盖：回调可达性 + string payload。
+     */
+    @LogMethod
+    testCallbackString(delayMs: number, callback: (value: string) => void): void {
+        VerifyLog.info(`testCallbackString registered, delayMs=${delayMs}, fn.length=${callback.length}`);
+        setTimeout(() => {
+            try {
+                callback(`ets-callback-${delayMs}`);
+                VerifyLog.info('testCallbackString invoked OK');
+            } catch (err) {
+                VerifyLog.error('testCallbackString invoke FAILED ' + JSON.stringify(err));
+            }
+        }, delayMs);
+    }
+
+    /**
+     * 立即调用回调两次，payload 分别为 boolean 与 number。
+     * 覆盖：同一 Function 多次调用、多 payload 类型。
+ */
+    @LogMethod
+    testCallbackMultiTypes(callback: (value: ESObject) => void): void {
+        VerifyLog.info(`testCallbackMultiTypes registered, fn.length=${callback.length}`);
+        setTimeout(() => {
+            try {
+                callback(true);
+                callback(12345);
+                VerifyLog.info('testCallbackMultiTypes invoked OK');
+            } catch (err) {
+                VerifyLog.error('testCallbackMultiTypes invoke FAILED ' + JSON.stringify(err));
+            }
+        }, 1000);
+    }
+
+    /**
+     * 注册后 30 秒才调用回调。
+     * 覆盖：JS Function 被 ArkTS 长期持有后是否仍可达（GC/保活问题）。
+     */
+    @LogMethod
+    testCallbackLongDelay(callback: (value: string) => void): void {
+        VerifyLog.info('testCallbackLongDelay registered, fires in 30s');
+        setTimeout(() => {
+            try {
+                callback('ets-callback-after-30s');
+                VerifyLog.info('testCallbackLongDelay invoked OK');
+            } catch (err) {
+                VerifyLog.error('testCallbackLongDelay invoke FAILED ' + JSON.stringify(err));
+            }
+        }, 30000);
     }
 }

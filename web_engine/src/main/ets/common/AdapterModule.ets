@@ -14,6 +14,7 @@ import lazy { NativeThemeAdapter } from '../adapter/NativeThemeAdapter';
 import lazy { PermissionManagerAdapter } from '../adapter/PermissionManagerAdapter';
 import lazy { DeviceInfoAdapter } from '../adapter/DeviceInfoAdapter';
 import lazy { ShareAdapter } from '../adapter/ShareAdapter';
+import lazy { DeeplinkPusher } from '../adapter/DeeplinkPusher';
 
 import lazy { DialogAdapter } from '../adapter/DialogAdapter';
 
@@ -31,4 +32,5 @@ export const adapterModule = new ContainerModule((bind) => {
   bind(DialogAdapter).toSelf();
   bind(DeviceInfoAdapter).toSelf();
   bind(ShareAdapter).toSelf();
+  bind(DeeplinkPusher).toSelf();
 });

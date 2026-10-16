@@ -213,9 +213,7 @@ deeplink 用 `show-plugin` 测试不弹窗属预期行为，`open?vault=test` �
 
 ## 10. 本次没有做的事
 
-**`callArkTSFunction` 尚未投入使用。** 能力已验证可用（返回 `{"type":"string","value":"ets bridge adapter"}`），但 deeplink 与检测更新仍走文件中转。
-
-方向是它只能单向：Electron JS 调 ArkTS，返回 Promise。检测更新是「ArkTS 查完结果告诉 JS」，方向相反，可以改成关于页发问时按需 `callArkTSFunction` 拉取，那样两个中转文件和两个定时器都能删掉。deeplink 是真正的推送需求，这条路帮不上。
+`callArkTSFunction` 的两个方向（JS 调 ArkTS 拿返回值；JS Function 作为参数传入、由 ArkTS 侧随时调用）当时均已实测通过（`EtsBridgeAdapter` 第 8 节三个用例，回调可达、payload 保类型、30 秒后仍可达），但当时 deeplink 与检测更新仍走文件中转。两者后来均已迁移到这套通道：检测更新走 `UpdateChecker.GetStatus` / `CheckNow`，deeplink 走 `EtsBridge.SubscribeDeeplink` 回调推送，文件中转全部删除，见 `docs/ets-electron-bus.md`。
 
 **deeplink 的 `open-url` 派发在新运行时仍未通。** `kOpenURL` 实测不发射 `open-url`（埋点「probe NATIVE open-url received」命中 0，同一时刻命中的是自身 emit 的回声）。`kSecondInstance` 事件能触发，但 ArkTS 发 `argv=["electron"]`、JS 收到 `argv=[]`，参数在 native 侧丢失。下一步是把 `second-instance` 的四个参数（`event`、`argv`、`workingDirectory`、`additionalData`）全部打出来，看链接是否在 `additionalData` 里。
 

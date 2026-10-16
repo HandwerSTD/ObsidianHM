@@ -30,7 +30,6 @@
 import { injectable } from 'inversify';
 import { http } from '@kit.NetworkKit';
 import { bundleManager } from '@kit.AbilityKit';
-import { fileIo } from '@kit.CoreFileKit';
 
 import { BaseAdapter } from '../common/BaseAdapter';
 import LogUtil from '../utils/LogUtil';
@@ -48,27 +47,11 @@ const TAG: string = 'UpdateChecker';
 const REMOTE_APP_JSON5_URL: string =
   'https://raw.gitcode.com/handwer/ObsidianHM/raw/main/AppScope/app.json5';
 
-/**
- * 结果文件名。写入 filesDir 后由 Electron 外层读取，
- * 改名需要同时修改 resfile/resources/app/main.js。
- */
-const RESULT_FILE_NAME: string = 'update-check.json';
-
-/**
- * 检查触发文件名。Electron 外层在「检查更新」按钮点击时写入这个文件，
- * 本适配器轮询发现后删除它并立即跑一次 checkOnce。
- * 改名需要同时修改 resfile/resources/app/main.js 的 UPDATE_CHECK_TRIGGER_FILE。
- */
-const TRIGGER_FILE_NAME: string = 'update-check.now';
-
 /** 启动后首次检查的延迟，避开启动阶段。 */
 const FIRST_CHECK_DELAY_MS: number = 30 * 1000;
 
 /** 两次检查的间隔。 */
 const CHECK_INTERVAL_MS: number = 6 * 60 * 60 * 1000;
-
-/** 轮询触发文件的间隔。用户点击「检查更新」后要求秒级响应。 */
-const TRIGGER_POLL_INTERVAL_MS: number = 3 * 1000;
 
 const REQUEST_TIMEOUT_MS: number = 15 * 1000;
 
@@ -88,55 +71,57 @@ interface UpdateCheckResult {
 }
 
 /**
- * 检测更新。远端 versionCode 大于本机时把 hasUpdate 记为真，
- * 结果写入 filesDir/update-check.json 供 Electron 外层读取。
+ * 检测更新。远端 versionCode 大于本机时把 hasUpdate 记为真。
  *
- * Electron 的渲染进程没有按名调用 ArkTS 绑定的入口，只有文件中转这一条路，
- * 与 deeplink 队列（obsidian-deeplink.pending）用的是同一个目录约定。
+ * 结果保存在内存（lastResult），并经 JS 回调主动推给 Electron 主进程：
+ * JS 启动后经 EtsBridge.SubscribeUpdateResult 注册持久回调，之后每次
+ * checkOnce 完成（含定时检查与 CheckNow 触发的检查）都推一次。
+ * Electron 主进程侧用 requestId 把推送与发起的 Promise 配对 resolve。
  */
 @injectable()
 export class UpdateChecker extends BaseAdapter {
-  private polling: boolean = false;
+  private lastResult: UpdateCheckResult | undefined = undefined;
+  private resultHandler: ((payload: string) => void) | undefined = undefined;
 
-  startPolling(context: Context): void {
-    if (this.polling) {
-      return;
-    }
-    this.polling = true;
+  startPolling(): void {
     LogUtil.info(TAG, `启动检测更新，${FIRST_CHECK_DELAY_MS / 1000} 秒后首次检查，` +
       `此后每 ${CHECK_INTERVAL_MS / 1000 / 60 / 60} 小时一次`);
     setTimeout((): void => {
-      this.checkOnce(context);
+      this.checkOnce();
       setInterval((): void => {
-        this.checkOnce(context);
+        this.checkOnce();
       }, CHECK_INTERVAL_MS);
     }, FIRST_CHECK_DELAY_MS);
-
-    // 用户手动触发的检查。与上面的定时检查互不影响，两者都只是调 checkOnce。
-    setInterval((): void => {
-      this.checkTriggerFile(context);
-    }, TRIGGER_POLL_INTERVAL_MS);
   }
 
   /**
-   * 检查 Electron 外层是否写下了触发文件。存在时删除并立即检查一次。
+   * 注册结果推送回调，由 JS 经 EtsBridge.SubscribeUpdateResult 调用。
+   * 注册后立即把现有结果推一次，JS 侧据此初始化缓存。
    */
-  private checkTriggerFile(context: Context): void {
-    const triggerPath: string = context.getApplicationContext().filesDir + '/' + TRIGGER_FILE_NAME;
-    try {
-      if (!fileIo.accessSync(triggerPath)) {
-        return;
-      }
-      fileIo.unlinkSync(triggerPath);
-      LogUtil.info(TAG, '发现用户触发的检查更新请求，立即检查一次');
-      VerifyLog.info('update-check trigger file seen');
-      this.checkOnce(context);
-    } catch (err) {
-      LogUtil.error(TAG, `处理 ${triggerPath} 失败: ${JSON.stringify(err)}`);
+  subscribeResult(handler: (payload: string) => void): void {
+    this.resultHandler = handler;
+    VerifyLog.info('update-check result handler registered');
+    if (this.lastResult !== undefined) {
+      this.deliver(this.lastResult);
     }
   }
 
-  async checkOnce(context: Context): Promise<void> {
+  /**
+   * 立即触发一次后台检查，同步返回。结果经结果回调推送，
+   * JS 侧按 requestId 配对 resolve 对应的 Promise。
+   * 供 EtsBridge 侧 UpdateChecker.CheckNow 绑定调用；requestId 由 JS 生成传入。
+   *
+   * AKI 绑定要求同步返回，而 HTTP 只有异步接口：同步等待完成
+   * （忙等或休眠）会阻塞 ArkTS 单线程事件循环，HTTP 完成回调永远进不来。
+   * 因此这里只负责触发。
+   */
+  triggerCheckNow(requestId: string): void {
+    LogUtil.info(TAG, `收到立即检查的请求 id=${requestId}`);
+    VerifyLog.info('update-check trigger via CheckNow id=' + requestId);
+    this.checkOnce(requestId);
+  }
+
+  async checkOnce(requestId: string = ''): Promise<void> {
     let request: http.HttpRequest | null = null;
     try {
       let localVersionCode: number = bundleManager.getBundleInfoForSelfSync(
@@ -170,12 +155,17 @@ export class UpdateChecker extends BaseAdapter {
       };
       LogUtil.info(TAG, `远端 versionCode ${remoteVersionCode}，本机 ${localVersionCode}，` +
         `hasUpdate ${result.hasUpdate}`);
-      this.writeResult(context, result);
+      this.lastResult = result;
+      this.deliver(result, requestId);
       VerifyLog.info('update-check remote=' + remoteVersionCode + ' local=' + localVersionCode +
-        ' hasUpdate=' + result.hasUpdate);
+        ' hasUpdate=' + result.hasUpdate + ' requestId=' + requestId);
     } catch (err) {
       LogUtil.error(TAG, `检测更新失败: ${JSON.stringify(err)}`);
-      VerifyLog.error('update-check FAILED ' + JSON.stringify(err));
+      VerifyLog.error('update-check FAILED ' + JSON.stringify(err) + ' requestId=' + requestId);
+      // 失败也要推，CheckNow 发起的 Promise 需要被 reject 而非超时。
+      if (requestId !== '') {
+        this.deliverError(requestId);
+      }
     } finally {
       if (request) {
         request.destroy();
@@ -183,24 +173,34 @@ export class UpdateChecker extends BaseAdapter {
     }
   }
 
-  private writeResult(context: Context, result: UpdateCheckResult): void {
-    let resultPath: string = context.getApplicationContext().filesDir + '/' + RESULT_FILE_NAME;
-    let file: fileIo.File | null = null;
+  /**
+   * 把结果经回调推给 Electron 主进程。
+   * payload 带 requestId（定时检查为空串），JS 侧据此配对 Promise。
+   */
+  private deliver(result: UpdateCheckResult, requestId: string = ''): void {
+    let handler = this.resultHandler;
+    if (handler === undefined) {
+      return;
+    }
+    let payload = JSON.stringify({ type: 'result', requestId: requestId, result: result });
     try {
-      file = fileIo.openSync(resultPath,
-        fileIo.OpenMode.CREATE | fileIo.OpenMode.WRITE_ONLY | fileIo.OpenMode.TRUNC);
-      fileIo.writeSync(file.fd, JSON.stringify(result));
-      LogUtil.info(TAG, `已写入 ${resultPath}: ${JSON.stringify(result)}`);
+      handler(payload);
+      VerifyLog.info('update-check result pushed requestId=' + requestId);
     } catch (err) {
-      LogUtil.error(TAG, `写入 ${resultPath} 失败: ${JSON.stringify(err)}`);
-    } finally {
-      if (file) {
-        try {
-          fileIo.closeSync(file);
-        } catch (closeErr) {
-          LogUtil.error(TAG, `关闭 ${resultPath} 失败: ${JSON.stringify(closeErr)}`);
-        }
-      }
+      VerifyLog.error('update-check push FAILED ' + JSON.stringify(err));
+    }
+  }
+
+  private deliverError(requestId: string): void {
+    let handler = this.resultHandler;
+    if (handler === undefined) {
+      return;
+    }
+    let payload = JSON.stringify({ type: 'error', requestId: requestId, message: 'update check failed' });
+    try {
+      handler(payload);
+    } catch (err) {
+      VerifyLog.error('update-check pushError FAILED ' + JSON.stringify(err));
     }
   }
 }

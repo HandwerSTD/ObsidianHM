@@ -10,3 +10,5 @@ export { ILogin } from './src/main/ets/interface/CommonInterface';
 export { WebNodeHandleWindow } from './src/main/ets/components/WebNodeHandleWindow';
 export { WebNodeHandleSubWindow } from './src/main/ets/components/WebNodeHandleSubWindow';
 export { VerifyLog } from './src/main/ets/utils/VerifyLog';
+export { DeeplinkPusher } from './src/main/ets/adapter/DeeplinkPusher';
+export { default as Inject } from './src/main/ets/common/InjectModule';

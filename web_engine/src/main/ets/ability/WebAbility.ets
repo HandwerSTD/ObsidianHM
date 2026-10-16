@@ -99,10 +99,10 @@ export class WebAbility extends WebBaseAbility {
 
     Inject.get(PermissionManagerAdapter).initPermissions();
 
-    // 本项目定制：拉远端 versionCode 与本机比较，结果写 filesDir/update-check.json，
-    // 由 Electron 外层 main.js 读取后经 ohsidian-update-status 通道回给渲染进程。
+    // 本项目定制：定时拉远端 versionCode 与本机比较，结果保存在内存，
+    // 由 Electron 外层 main.js 经 UpdateChecker.GetStatus 按需拉取。
     try {
-      Inject.getOrCreate(UpdateChecker).startPolling(this.context);
+      Inject.getOrCreate(UpdateChecker).startPolling();
     } catch (err) {
       LogUtil.warn(TAG, 'UpdateChecker not available: ' + JSON.stringify(err));
     }

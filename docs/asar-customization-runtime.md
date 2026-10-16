@@ -734,18 +734,18 @@ app.on('browser-window-created', function (event, window) {
 
 升级时无需改动。
 
-### 8.3 deeplink 队列派发
+### 8.3 deeplink 推送
 
-ArkTS 到 Electron 主进程之间只有 `ExecuteCommand` 一条通道，它只覆盖窗口管理，送不进 `open-url`；而 Electron 也没有原生协议处理与单实例转发。因此由两侧共同完成链路：
+ArkTS 到 Electron 主进程的链接传送走 `EtsBridge.SubscribeDeeplink` 回调推送（机制与实测见 `docs/ets-electron-bus.md`）：
 
-- ArkTS 侧 `electron/src/main/ets/utils/DeeplinkBridge.ets` 把链接追加写入 `getApplicationContext().filesDir` 下的 `obsidian-deeplink.pending`。追加而不覆盖：应用未运行时收到的多条链接要能全部保留。
+- ArkTS 侧 `web_engine/src/main/ets/adapter/DeeplinkPusher.ets` 持有 JS 回调；回调已注册时直接推送，冷启动未注册时写缓冲文件 `obsidian-deeplink.pending`，注册后由 `drainBuffer` 一次性补送。
 - ArkTS 侧 `EntryAbility.ets` 的 `onCreate` 与 `onNewWant` 都调 `captureDeeplink(want)`。`onCreate` 里必须在 `super.onCreate` 之前调用，因为 `WebAbility` 会把 `want.uri` 当作起始页面地址读走。`extractAndStrip` 取出链接后把 `want.uri` 置空。
-- 外层脚本每 500 毫秒轮询队列，读到就删除文件。
-- `dispatchDeeplink` 轮询 `app.listenerCount('open-url') > 0` 后才派发（最多等 40 次、每次 250 毫秒）。asar 在加载完成后才注册 `open-url` 监听，冷启动时队列里已有的链接要等到监听就绪才能派发。注释写明：记录写在派发之前，因为内部处理会同步抛出异常（例如找不到仓库），放在派发之后记录会把这次派发整条丢掉。
+- 外层脚本在 `app.whenReady()` 后调 `subscribeDeeplink()` 注册回调，之后不再轮询。
+- `dispatchDeeplink` 轮询 `app.listenerCount('open-url') > 0` 后才派发（最多等 40 次、每次 250 毫秒）。asar 在加载完成后才注册 `open-url` 监听，冷启动排空缓冲送来的链接要等到监听就绪才能派发。注释写明：记录写在派发之前，因为内部处理会同步抛出异常（例如找不到仓库），放在派发之后记录会把这次派发整条丢掉。
 
-文件名的约定两端共用：`DeeplinkBridge.ets` 里的常量注释写明改名需要同时修改外层 `main.js`。
+历史方案是两侧共用的队列文件加 500 毫秒轮询，缓冲文件名由此沿用，如今该文件仅由 ArkTS 侧读写。
 
-升级时无需改动。v34.8.5 下重测过 `ExecuteCommand` 各命令，结论一致，见 11.2 节。新运行时提供的 `callArkTSFunction` 是 Electron 调 ArkTS 的方向，帮不上这一项（见 11.3 节）。
+升级时无需改动。v34.8.5 下重测过 `ExecuteCommand` 各命令，结论一致，见 11.2 节。`ExecuteCommand` 不可透传的结论不影响这条链路，它绕开了 `ExecuteCommand`。
 
 #### `ExecuteCommand` 不可透传的实测结论
 
@@ -771,9 +771,9 @@ asar 注册了两处 `open-url`：一处是 `app.once(...)`，挂在冷启动缓
 
 ### 8.4 检测更新的两个通道
 
-与 deeplink 队列同一套文件中转。ArkTS 侧 `UpdateChecker.ets` 拉取远端 `AppScope/app.json5` 的 `versionCode`，与本机比较后写入 `filesDir/update-check.json`；外层每 500 毫秒读一次，`checkedAt` 变化时刷新缓存，`ohsidian-update-status` 通道返回缓存。反方向，关于页的「检查更新」按钮经 `ohsidian-update-check-now` 通道请外层写入 `update-check.now`，ArkTS 侧每 3 秒轮询发现后删除并立即检查一次。
+两条流量都走 `systemPreferences.callArkTSFunction`，无轮询：外层经 `UpdateChecker.SubscribeUpdateResult` 注册持久结果回调，ArkTS 侧每次检查完成后主动推送（定时检查刷新缓存，`ohsidian-update-status` 通道返回缓存）；关于页的「检查更新」按钮经 `ohsidian-update-check-now` 通道请外层调 `UpdateChecker.CheckNow`，结果推送按 requestId 配对 resolve Promise。
 
-两个文件名两端各有常量，改名需成对修改。完整说明见 `docs/update-check.md`。
+完整说明见 `docs/update-check.md`。
 
 升级时无需改动。
 
@@ -883,14 +883,21 @@ app.on('second-instance', function (event, argv, cwd, additionalData) {
 
 新运行时提供了 `callArkTSFunction`——Electron 主进程可以直接调 ArkTS 函数并拿到返回值，实测返回 `{"type":"string","value":"ets bridge adapter"}`。承载它的是新模板的 `web_engine/src/main/ets/adapter/EtsBridgeAdapter.ets`。
 
-这一项改变了 8.3 节「ArkTS 向 Electron 传递数据只有文件中转一条通路」的结论，但只改了一半。`callArkTSFunction` 是单向的：Electron JS 调 ArkTS，ArkTS 调不动 JS。对照两个方向的用途：
+这一项改变了 8.3 节「ArkTS 向 Electron 传递数据只有文件中转一条通路」的结论，并且两个方向都已打通：除了 JS 调 ArkTS 拿返回值，`callArkTSFunction` 还支持把 JS Function 作为参数传入，ArkTS 拿到后可以随时调用，等价于一条 ArkTS 主动推 JS 的长连接。这一点在 v34.8.5 上已实测（见下），官方接口文档第五章「暂不支持传入 Function 类型参数」的描述已过时。两项文件中转均已用它替代：
 
-| 方向 | 现状 | `callArkTSFunction` 能否替代 |
-|------|------|------------------------------|
-| 检测更新：ArkTS 查完结果告诉 JS | `update-check.json`，主进程每 500ms 轮询 | 能。改成关于页发问时按需拉取，两个中转文件和两个定时器都能删 |
-| deeplink：ArkTS 被动收到链接推给 JS | `obsidian-deeplink.pending`，主进程每 500ms 轮询 | 不能。这是真正的推送需求，`callArkTSFunction` 的方向相反 |
+| 场景 | 原方案（已删除） | 现方案 |
+|------|------------------|--------|
+| 检测更新 | `update-check.json` / `update-check.now`，双侧各一个轮询定时器 | `UpdateChecker.SubscribeUpdateResult` 结果回调推送 + `UpdateChecker.CheckNow` 触发，JS 侧用 requestId 配对 resolve Promise，无轮询 |
+| deeplink | `obsidian-deeplink.pending` 队列，主进程每 500ms 轮询 | `EtsBridge.SubscribeDeeplink` 回调推送，冷启动由 ArkTS 侧缓冲文件补送 |
 
-替换检测更新的具体做法见第 8 节与 `docs/update-check.md`。deeplink 要么继续走文件队列，要么另找一条 ArkTS 主动推 JS 的通道，`second-instance` 是一个待验证的候选。
+设计与限制清单见 `docs/ets-electron-bus.md`，检测更新见 `docs/update-check.md`。
+
+**回调机制的实测结论**（2026-10-16，`EtsBridgeAdapter` 第 8 节三个用例 + `main.js` 的 `callback-*` 探针，日志见 `obsidian.log`）：
+
+- **注册与可达**：JS 经 `callArkTSFunction('EtsBridge.TestCallbackString', 'void', [delay, fn])` 把 Function 传入 ArkTS，ArkTS 在 `setTimeout` 里调用，payload 原样到达 JS，无类型丢失。
+- **多次调用与 payload 类型**：同一 Function 被调用多次不失效，payload 覆盖 `boolean` / `number` / `string`，与 `EtsBridgeAdapter.ets` 头注释的记录一致。
+- **保活**：注册 30 秒后调用仍可达，Function 引用不被回收，事件总线式的长期持有成立。
+- **限制**：回调 payload 仅支持 `undefined` / `null` / `boolean` / `number` / `string`，Object/Array 到 JS 侧是 `undefined`，结构化数据需 JSON 字符串承载；总参数数不超过 3 个；到达 ArkTS 侧的回调 `Function.length` 恒为 0（C++ 包装所致），分支选择依据的是 JS 原始函数。
 
 ### 11.4 随新运行时移除的 ArkTS 适配器
 

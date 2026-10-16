@@ -9,6 +9,8 @@ import { Configuration } from '@ohos.app.ability.Configuration';
 
 import { WebAbility } from 'web_engine';
 import { DeeplinkBridge } from '../utils/DeeplinkBridge';
+import { DeeplinkPusher } from 'web_engine';
+import { Inject } from 'web_engine';
 
 export default class EntryAbility extends WebAbility {
   onConfigurationUpdate(config: Configuration) {
@@ -31,18 +33,15 @@ export default class EntryAbility extends WebAbility {
   }
 
   /**
-   * 把 obsidian:// 链接写入 filesDir 下的队列文件，由 Electron 外层 main.js 轮询取走，
-   * 交给 Obsidian 内建的 open-url 处理器。
-   *
-   * 必须用 applicationContext 的目录：UIAbilityContext.filesDir 带模块前缀
-   * （haps/electron/files），而 Electron 的 userData 是应用级目录（files）。
+   * 把 obsidian:// 链接交给 DeeplinkPusher：回调已注册时直接推送到 Electron 主进程，
+   * 未注册时（冷启动）写入缓冲文件，JS 注册回调后一次性送出。
    */
   private captureDeeplink(want: Want): void {
     let url: string | undefined = DeeplinkBridge.extractAndStrip(want);
     if (url === undefined) {
       return;
     }
-    DeeplinkBridge.enqueue(this.context.getApplicationContext().filesDir, url);
+    DeeplinkBridge.push(Inject.getOrCreate(DeeplinkPusher), url);
   }
 
   async onPrepareToTerminateAsync(): Promise<boolean> {

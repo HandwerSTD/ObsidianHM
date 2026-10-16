@@ -459,6 +459,43 @@ function installVerifyProbes() {
 		vlog('probe callArkTSFunction threw ' + (e && e.message ? e.message : String(e)));
 	}
 
+	// 回调参数机制验证（方案二实测）：把 JS Function 经 callArkTSFunction 传给
+	// ArkTS，ArkTS 侧延迟后调回。三个用例分别覆盖可达性、多 payload 类型、
+	// 长延迟保活。结果经 [OHSV] callback-* 前缀在 obsidian.log 里判读。
+	try {
+		let sp2 = electron.systemPreferences;
+		if (sp2 && typeof sp2.callArkTSFunction === 'function') {
+			sp2.callArkTSFunction('EtsBridge.TestCallbackString', 'void', [2000, function (v) {
+				vlog('callback-reachability got ' + JSON.stringify(v) + ' typeof=' + typeof v);
+			}]).catch(function (e) {
+				vlog('callback-reachability REGISTER REJECTED ' + (e && e.message ? e.message : String(e)));
+			});
+			sp2.callArkTSFunction('EtsBridge.TestCallbackMultiTypes', 'void', [function (v) {
+				vlog('callback-multi-types got ' + JSON.stringify(v) + ' typeof=' + typeof v);
+			}]).catch(function (e) {
+				vlog('callback-multi-types REGISTER REJECTED ' + (e && e.message ? e.message : String(e)));
+			});
+			sp2.callArkTSFunction('EtsBridge.TestCallbackLongDelay', 'void', [function (v) {
+				vlog('callback-long-delay got ' + JSON.stringify(v) + ' typeof=' + typeof v);
+			}]).catch(function (e) {
+				vlog('callback-long-delay REGISTER REJECTED ' + (e && e.message ? e.message : String(e)));
+			});
+			vlog('callback probes registered');
+			// CheckNow 的 requestId 配对验证：Promise 应在结果推送到达时 resolve，
+			// 而非靠定时器兑底。
+			triggerUpdateCheckNow()
+				.then(function (result) {
+					vlog('probe CheckNow RESOLVED hasUpdate=' + result.hasUpdate +
+						' remote=' + result.remoteVersionCode);
+				})
+				.catch(function (e) {
+					vlog('probe CheckNow REJECTED ' + (e && e.message ? e.message : String(e)));
+				});
+		}
+	} catch (e) {
+		vlog('callback probes threw ' + (e && e.message ? e.message : String(e)));
+	}
+
 	// screen 模块：GetAvailableArea / GetFontSizeScale 两个端点在新运行时已消失。
 	try {
 		let s = electron.screen;
@@ -966,22 +1003,23 @@ function installUpdateStatusChannel() {
 	log('检测更新结果通道已注册，当前结果', updateCheckStatus ? '有' : '无');
 }
 
-// 「检查更新」按钮的触发通道。渲染进程写不了 ArkTS 侧的文件，
-// 因此由这里代写触发文件，ArkTS 的 UpdateChecker 轮询发现后立即跑一次检查。
-// 文件名与 UpdateChecker.ets 的 TRIGGER_FILE_NAME 共用。
-// 两侧约定：写入后由 ArkTS 删除，外层只负责写。
-const UPDATE_CHECK_TRIGGER_FILE = 'update-check.now';
-
+// 「检查更新」按钮的触发通道。经 UpdateChecker.CheckNow 请 ArkTS 立即检查一次，
+// 结果经结果回调推送，triggerUpdateCheckNow 返回的 Promise 在结果到达时 resolve。
 function installUpdateCheckNowChannel() {
 	electron.ipcMain.removeAllListeners('ohsidian-update-check-now');
 	electron.ipcMain.on('ohsidian-update-check-now', function (event) {
 		try {
-			let triggerPath = path.join(dataPath, UPDATE_CHECK_TRIGGER_FILE);
-			fs.writeFileSync(triggerPath, String(Date.now()));
-			log('已写入检查更新触发文件', triggerPath);
+			triggerUpdateCheckNow()
+				.then(function (result) {
+					log('立即检查更新完成', '远端 versionCode', result.remoteVersionCode,
+						'hasUpdate', result.hasUpdate);
+				})
+				.catch(function (e) {
+					log('立即检查更新失败', e && e.message ? e.message : String(e));
+				});
 			event.returnValue = true;
 		} catch (e) {
-			log('写入检查更新触发文件失败', e && e.message ? e.message : String(e));
+			log('触发立即检查更新时抛出异常', e && e.message ? e.message : String(e));
 			event.returnValue = false;
 		}
 	});
@@ -1135,14 +1173,11 @@ process.on('uncaughtException', function (error) {
 		});
 });
 
-// deeplink 派发：ArkTS 侧把 obsidian:// 链接写进 dataPath 下的队列文件，这里取出后
-// 交给 Obsidian 内建的 open-url 处理器。
+// deeplink 派发：ArkTS 侧经 EtsBridge.SubscribeDeeplink 持有的回调把 obsidian://
+// 链接推进来，这里交给 Obsidian 内建的 open-url 处理器。
 //
-// 为什么必须走文件队列：ArkTS 到 Electron 主进程之间只有 ExecuteCommand 一条通道，
-// 它只覆盖窗口管理。新运行时的 kOpenURL 已实测确认不发射 open-url——
-// 埋点 [OHSV] 的 'probe NATIVE open-url received' 在多轮运行中命中 0 次，
-// 同一时刻命中的是 'probe open-url observed, source=our-own-emit'，即本文件自己 emit 的回声。
-// kSecondInstance 能触发事件但 argv 为空，带不了链接。
+// 冷启动时回调尚未注册，ArkTS 侧先把链接写进缓冲文件（DeeplinkPusher 的
+// BUFFER_FILE_NAME），注册回调后由 ArkTS 主动排空送出，链接不会丢。
 //
 // app.emit('open-url') 会同时命中 asar 注册的两个监听：
 //   1. app.once("open-url")  冷启动缓冲，挂在 will-finish-launching 上，把 URL 存进变量
@@ -1150,27 +1185,9 @@ process.on('uncaughtException', function (error) {
 // 链接打不开的场景下同一条链接可能被走两遍，弹窗出现两次。该行为与运行时版本无关，
 // 旧运行时同样如此。是否需要处理取决于实际是否复现，需要时在这里区分：
 // emit 前摘掉 once 监听，或改走其它入口。详见 docs/asar-customization-runtime.md 8.3。
-const DEEPLINK_QUEUE_FILE = 'obsidian-deeplink.pending';
-
-function readQueuedDeeplinks() {
-	let queuePath = path.join(dataPath, DEEPLINK_QUEUE_FILE);
-	let raw;
-	try {
-		if (!fs.existsSync(queuePath)) return [];
-		raw = fs.readFileSync(queuePath, 'utf8');
-		fs.unlinkSync(queuePath);
-	} catch (e) {
-		log('读取 deeplink 队列失败', e && e.message ? e.message : String(e));
-		return [];
-	}
-	return raw.split('\n')
-		.map(function (line) { return line.trim(); })
-		.filter(function (line) { return line.startsWith('obsidian://'); });
-}
-
 function dispatchDeeplink(url) {
 	// Obsidian 在 asar 加载完成后才注册 open-url 监听，
-	// 冷启动时队列里已有的链接要等到监听就绪才能派发，否则事件会被丢弃。
+	// 冷启动排空缓冲送来的链接要等到监听就绪才能派发，否则事件会被丢弃。
 	vlog('dispatchDeeplink start url=' + url);
 	let attempts = 0;
 	let timer = setInterval(function () {
@@ -1201,50 +1218,122 @@ function dispatchDeeplink(url) {
 	}, 250);
 }
 
-function pollDeeplinkQueue() {
-	let links = readQueuedDeeplinks();
-	if (links.length === 0) return;
-	log('从队列读到 deeplink', links.length, '条');
-	vlog('deeplink queue read n=' + links.length + ' urls=' + JSON.stringify(links));
-	links.forEach(dispatchDeeplink);
-}
-
-pollDeeplinkQueue();
-setInterval(pollDeeplinkQueue, 500);
-
-// 检测更新结果的中转文件。ArkTS 侧（UpdateChecker）拉取远端 versionCode 后写在这里，
-// 渲染进程经 ohsidian-update-status 通道读取。
-// 反方向的请求走 UPDATE_CHECK_TRIGGER_FILE，两端的文件名常量需成对修改。
-// 与 deeplink 队列同为文件中转：渲染进程拿不到 ArkTS 的绑定，只有这个目录是共用的。
-const UPDATE_CHECK_FILE = 'update-check.json';
-
-// 最近一次读到的结果，null 表示还没有可用结果。
-let updateCheckStatus = null;
-// 上一次读到的 checkedAt，用于判断文件是否被重写。
-let updateCheckStamp = null;
-
-function readUpdateCheckStatus() {
+// 注册 deeplink 回调。ArkTS 侧收到订阅后会把缓冲存量排空推过来，
+// 之后每条新链接也直接经这个回调进主进程，替代文件队列轮询。
+function subscribeDeeplink() {
 	try {
-		let resultPath = path.join(dataPath, UPDATE_CHECK_FILE);
-		if (!fs.existsSync(resultPath)) return null;
-		return JSON.parse(fs.readFileSync(resultPath, 'utf8'));
+		let sp = electron.systemPreferences;
+		if (!sp || typeof sp.callArkTSFunction !== 'function') {
+			log('callArkTSFunction 不可用，deeplink 无法订阅');
+			return;
+		}
+		sp.callArkTSFunction('EtsBridge.SubscribeDeeplink', 'void', [function (url) {
+			if (typeof url !== 'string' || url.length === 0) {
+				vlog('deeplink callback got non-string payload: ' + JSON.stringify(url));
+				return;
+			}
+			dispatchDeeplink(url);
+		}]).catch(function (e) {
+			log('订阅 deeplink 回调失败', e && e.message ? e.message : String(e));
+		});
+		log('deeplink 回调已注册');
 	} catch (e) {
-		log('读取检测更新结果失败', e && e.message ? e.message : String(e));
-		return null;
+		log('订阅 deeplink 回调时抛出异常', e && e.message ? e.message : String(e));
 	}
 }
 
-function refreshUpdateCheckStatus() {
-	let status = readUpdateCheckStatus();
-	if (!status || status.checkedAt === updateCheckStamp) return;
-	updateCheckStamp = status.checkedAt;
-	updateCheckStatus = status;
-	log('检测更新结果已更新', '远端 versionCode', status.remoteVersionCode,
-		'本机', status.localVersionCode, 'hasUpdate', status.hasUpdate);
+// 检测更新：ArkTS 侧（UpdateChecker）定时拉远端 versionCode，并把结果经
+// 持久回调主动推送过来。这里的 Promise 管理器用 requestId 把推送与发起
+// 的调用配对：CheckNow 触发的检查 resolve/reject 对应的 Promise，
+// 定时检查的推送（requestId 为空串）只刷新缓存。
+// 无轮询：结果就绪的时刻由 ArkTS 侧回调决定。
+
+// 最近一次收到的结果，null 表示还没有可用结果。
+let updateCheckStatus = null;
+// requestId -> {resolve, reject, timer}；超时由 CHECK_PROMISE_TIMEOUT_MS 兜底。
+const pendingUpdateChecks = new Map();
+const CHECK_PROMISE_TIMEOUT_MS = 40000;
+
+function callArkts(method, returnType, params) {
+	// paramArray 为 undefined 时运行时会 reject（Expected parameter array），
+	// 无参调用也要传空数组。
+	return electron.systemPreferences.callArkTSFunction(method, returnType, params || []);
 }
 
-refreshUpdateCheckStatus();
-setInterval(refreshUpdateCheckStatus, 500);
+function handleUpdateCheckPush(raw) {
+	let msg;
+	try {
+		msg = JSON.parse(raw);
+	} catch (e) {
+		vlog('update-check push JSON parse FAILED ' + (e && e.message ? e.message : String(e)));
+		return;
+	}
+	if (!msg || typeof msg.type !== 'string') return;
+	if (msg.type === 'result') {
+		if (msg.result && msg.result.checkedAt) {
+			updateCheckStatus = msg.result;
+			log('检测更新结果已更新', '远端 versionCode', msg.result.remoteVersionCode,
+				'本机', msg.result.localVersionCode, 'hasUpdate', msg.result.hasUpdate);
+		}
+	} else if (msg.type !== 'error') {
+		return;
+	}
+	let pending = msg.requestId ? pendingUpdateChecks.get(msg.requestId) : undefined;
+	if (!pending) return;
+	pendingUpdateChecks.delete(msg.requestId);
+	clearTimeout(pending.timer);
+	if (msg.type === 'result') {
+		pending.resolve(msg.result);
+	} else {
+		pending.reject(new Error(msg.message || 'update check failed'));
+	}
+}
+
+// 注册结果回调。ArkTS 侧收到订阅后会把现有结果推一次，之后每次检查完成
+// （定时与手动）都推。ready 之前注册的检查请求会因回调未注册而丢失结果，
+// 因此订阅先行，按钮在页面就绪后才可点。
+function subscribeUpdateResult() {
+	try {
+		let sp = electron.systemPreferences;
+		if (!sp || typeof sp.callArkTSFunction !== 'function') {
+			log('callArkTSFunction 不可用，检测更新结果无法订阅');
+			return;
+		}
+		sp.callArkTSFunction('UpdateChecker.SubscribeUpdateResult', 'void', [function (raw) {
+			if (typeof raw !== 'string' || raw.length === 0) {
+				vlog('update-check push got non-string payload');
+				return;
+			}
+			handleUpdateCheckPush(raw);
+		}]).catch(function (e) {
+			log('订阅检测更新结果失败', e && e.message ? e.message : String(e));
+		});
+		log('检测更新结果回调已注册');
+	} catch (e) {
+		log('订阅检测更新结果时抛出异常', e && e.message ? e.message : String(e));
+	}
+}
+
+// 发起一次立即检查，返回在结果到达时 resolve 的 Promise。
+// 网络超时由 ArkTS 侧错误推送覆盖；这里的定时器只兑底 ArkTS 侧异常失效。
+function triggerUpdateCheckNow() {
+	let requestId = 'uc-' + Date.now() + '-' + Math.floor(Math.random() * 1000000);
+	return new Promise(function (resolve, reject) {
+		let timer = setTimeout(function () {
+			pendingUpdateChecks.delete(requestId);
+			reject(new Error('update check timeout'));
+		}, CHECK_PROMISE_TIMEOUT_MS);
+		pendingUpdateChecks.set(requestId, { resolve: resolve, reject: reject, timer: timer });
+		callArkts('UpdateChecker.CheckNow', 'void', [requestId])
+			.catch(function (e) {
+				if (pendingUpdateChecks.has(requestId)) {
+					pendingUpdateChecks.delete(requestId);
+					clearTimeout(timer);
+					reject(e);
+				}
+			});
+	});
+}
 
 installFontFaceGuard();
 
@@ -1267,6 +1356,14 @@ app.whenReady().then(function () {
 	setTimeout(function () {
 		installTray();
 	}, 1000);
+});
+
+// deeplink 回调注册。ready 之后调，早于这条的时机（模块顶部）会让 ArkTS 排空
+// 缓冲时撞上尚未初始化的模块状态；晚一点只影响冷启动 deeplink 的延迟，
+// 链接本身在 ArkTS 缓冲里不会丢。
+app.whenReady().then(function () {
+	subscribeDeeplink();
+	subscribeUpdateResult();
 });
 
 // Actual startup routine

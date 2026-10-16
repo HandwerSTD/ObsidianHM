@@ -132,6 +132,7 @@ devecocli run --skip-build --device 127.0.0.1:42021
 | docs/runtime-upgrade-34.md                    | 运行时全量更新到 v34.8.5 的过程：版本基线、替换范围、定制的搬运、同步方式、踩过的坑    |
 | docs/asar-upgrade.md                          | 构建期打补丁路线（已停用）。第 3、4 节记录官方两版差异与 1.12.7 的定制清单，仍有参考价值     |
 | docs/licensing-audit.md                       | 开源许可审计：逐字节溯源结果、许可声明现状、九项待处理问题                       |
+| docs/ets-electron-bus.md                      | ArkTS 与 Electron 的双向通道：callArkTSFunction 类型映射、回调机制实测、事件总线方案 |
 | .agents/skills/obsidian-asar-upgrade/SKILL.md | 升级内核的完整流程，含注入点与官方接口的对照表                                |
 | tools/README.md                               | 符号定位工具的说明                                        |
 

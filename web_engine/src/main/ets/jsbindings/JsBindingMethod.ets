@@ -41,6 +41,7 @@ import { SpeechAdapterBind } from '../jsbindings/SpeechAdapterBind';
 import { SubWindowAdapterBind } from '../jsbindings/SubWindowAdapterBind';
 import { SystemFloatingWindowAdapterBind } from './SystemFloatingWindowAdapterBind';
 import { StatusBarManagerAdapterBind } from './StatusBarManagerAdapterBind';
+import { UpdateCheckerBind } from './UpdateCheckerBind';
 import { WebAppAdapterBind } from './WebAppAdapterBind';
 
 export class JsBindingMethod {
@@ -84,6 +85,7 @@ export class JsBindingMethod {
     StatusBarManagerAdapterBind.bind();
     SubWindowAdapterBind.bind();
     SystemFloatingWindowAdapterBind.bind();
+    UpdateCheckerBind.bind();
     WebAppAdapterBind.bind();
   }
 }

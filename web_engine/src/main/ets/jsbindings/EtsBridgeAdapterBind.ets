@@ -20,11 +20,18 @@
 
 import JsBindingUtils from '../utils/JsBindingUtils';
 import Inject from "../common/InjectModule";
+import { common } from '@kit.AbilityKit';
 import lazy { EtsBridgeAdapter } from '../adapter/EtsBridgeAdapter';
+import lazy { DeeplinkPusher } from '../adapter/DeeplinkPusher';
 
 /** Get or create EtsBridgeAdapter singleton */
 function implEtsBridgeAdapter(): EtsBridgeAdapter {
     return Inject.getOrCreate(EtsBridgeAdapter);
+}
+
+/** Get or create DeeplinkPusher singleton */
+function implDeeplinkPusher(): DeeplinkPusher {
+    return Inject.getOrCreate(DeeplinkPusher);
 }
 
 // ============================================================
@@ -176,6 +183,37 @@ function testReturnLargeStringArray(): Array<string> {
 }
 
 // ============================================================
+// Section 8: 回调参数机制
+//   delayMs 用 number 参数；callback 走 C++ 桥的 Function 参数路径，
+//   按 Function.length 自动选择 function（1 参）或 function0（0 参）。
+//   注意 wrapper 不能给 callback 加默认值或 rest 参数，那会把
+//   Function.length 变成 0，C++ 侧会选错参数分支。
+// ============================================================
+
+function testCallbackString(delayMs: number, callback: (value: string) => void): void {
+    implEtsBridgeAdapter().testCallbackString(delayMs, callback);
+}
+
+function testCallbackMultiTypes(callback: (value: ESObject) => void): void {
+    implEtsBridgeAdapter().testCallbackMultiTypes(callback);
+}
+
+function testCallbackLongDelay(callback: (value: string) => void): void {
+    implEtsBridgeAdapter().testCallbackLongDelay(callback);
+}
+
+// ============================================================
+// Section 9: deeplink 推送
+//   JS 侧把回调传入并长期持有，之后 obsidian:// 链接由 ArkTS 主动推送。
+//   filesDir 取 applicationContext 的，与 Electron 的 userData 同一目录。
+// ============================================================
+
+function subscribeDeeplink(callback: (url: string) => void): void {
+    let appContext = getContext().getApplicationContext() as common.ApplicationContext;
+    implDeeplinkPusher().subscribe(callback, appContext.filesDir);
+}
+
+// ============================================================
 // Bind all functions to AKI
 // ============================================================
 
@@ -224,5 +262,13 @@ export class EtsBridgeAdapterBind {
     // Section 7: Large arrays
     JsBindingUtils.bindFunction("EtsBridge.TestReturnLargeNumberArray", testReturnLargeNumberArray);
     JsBindingUtils.bindFunction("EtsBridge.TestReturnLargeStringArray", testReturnLargeStringArray);
+
+    // Section 8: 回调参数机制
+    JsBindingUtils.bindFunction("EtsBridge.TestCallbackString", testCallbackString);
+    JsBindingUtils.bindFunction("EtsBridge.TestCallbackMultiTypes", testCallbackMultiTypes);
+    JsBindingUtils.bindFunction("EtsBridge.TestCallbackLongDelay", testCallbackLongDelay);
+
+    // Section 9: deeplink 推送
+    JsBindingUtils.bindFunction("EtsBridge.SubscribeDeeplink", subscribeDeeplink);
   }
 }

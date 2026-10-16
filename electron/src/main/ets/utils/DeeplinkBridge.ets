@@ -28,19 +28,12 @@
  */
 
 import { Want } from '@kit.AbilityKit';
-import fs from '@ohos.file.fs';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { VerifyLog } from 'web_engine';
+import { VerifyLog, DeeplinkPusher } from 'web_engine';
 
 const DOMAIN_ID: number = 0x0000;
 const TAG: string = 'OHSidianDeeplink';
 const SCHEME_PREFIX: string = 'obsidian://';
-
-/**
- * deeplink 队列文件名。ArkTS 侧追加写入，Electron 主进程侧读取后删除，
- * 两端共用这一份约定，改名需要同时修改 resfile/resources/app/main.js。
- */
-export const DEEPLINK_QUEUE_FILE: string = 'obsidian-deeplink.pending';
 
 export class DeeplinkBridge {
   /**
@@ -68,37 +61,15 @@ export class DeeplinkBridge {
   }
 
   /**
-   * 把链接追加到队列文件。
+   * 把链接交给 DeeplinkPusher。回调已注册时直接推送到 Electron 主进程，
+   * 未注册时（冷启动）写入缓冲文件，注册后由 drainBuffer 一次性送出。
    *
-   * 追加而不是覆盖：应用未运行时收到的多条链接要能全部保留下来。
-   * 采用文件队列是因为 ArkTS 到 Electron 主进程之间只有 ExecuteCommand 一条通道，
-   * 而它只覆盖窗口管理，无法把链接送进 Obsidian 的 open-url 处理器。
+   * 必须用 applicationContext 的目录：UIAbilityContext.filesDir 带模块前缀
+   * （haps/electron/files），而 Electron 的 userData 是应用级目录（files）。
    */
-  static enqueue(filesDir: string, url: string): boolean {
-    let queuePath = filesDir + '/' + DEEPLINK_QUEUE_FILE;
-    let fd = -1;
-    try {
-      let file = fs.openSync(queuePath,
-        fs.OpenMode.WRITE_ONLY | fs.OpenMode.CREATE | fs.OpenMode.APPEND);
-      fd = file.fd;
-      fs.writeSync(fd, url + '\n');
-      fs.closeSync(fd);
-      fd = -1;
-      hilog.info(DOMAIN_ID, TAG, '已入队 %{public}s 到 %{public}s', url, queuePath);
-      VerifyLog.info('deeplink enqueued url=' + url);
-      return true;
-    } catch (err) {
-      hilog.error(DOMAIN_ID, TAG, '入队失败 %{public}s, %{public}s', url, JSON.stringify(err));
-      VerifyLog.error('deeplink enqueue FAILED url=' + url + ' ' + JSON.stringify(err));
-      return false;
-    } finally {
-      if (fd >= 0) {
-        try {
-          fs.closeSync(fd);
-        } catch (closeErr) {
-          hilog.error(DOMAIN_ID, TAG, '关闭队列文件失败, %{public}s', JSON.stringify(closeErr));
-        }
-      }
-    }
+  static push(pusher: DeeplinkPusher, url: string): void {
+    pusher.push(url);
+    hilog.info(DOMAIN_ID, TAG, '已交给 DeeplinkPusher %{public}s', url);
+    VerifyLog.info('deeplink handed to pusher url=' + url);
   }
 }
