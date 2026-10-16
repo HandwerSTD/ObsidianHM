@@ -290,17 +290,23 @@ export class WebAbility extends WebBaseAbility {
       // hide title bar
       window.setWindowDecorVisible(!this.hideTitleBar);
 
-      if (this.useDarkMode && deviceInfo.deviceType === '2in1') {
+      // 起始窗口与帮助窗口不可最大化，页面又写死了深色主题；系统浅色模式下
+      // 三键会采用深色图标，因此只为这两类窗口指定适合深色背景的配色。
+      // 普通窗口（主窗口、设置弹窗）保留系统默认配色，使三键跟随系统深浅色模式。
+      // 这两类窗口的差异在 Electron 侧：不可最大化的窗口才有 maximizable=false，
+      // 主窗口与设置弹窗从未收到 setMaximizable(false)，want 也不带该参数，
+      // 走 WebBaseAbility 里默认值 true 的路径。起始与帮助窗口由 native 侧经
+      // setMaximizable(false) 显式传入，据此区分。
+      if (!this.maximizable) {
         let buttonStyle: window.DecorButtonStyle = {
           colorMode: ConfigurationConstant.ColorMode.COLOR_MODE_DARK
         };
         window.setDecorButtonStyle(buttonStyle);
-      } else if (this.useDarkMode) {
-        this.setDarkModeButton(window);
       }
-      this.maximizable = this.maximizable && !this.hideTitleBar;
-      this.minimizable = this.minimizable && !this.hideTitleBar;
-      this.closable = this.closable && !this.hideTitleBar;
+      // 三键的可见性由 want 传入的原始值决定，任何窗口都要调用一次。
+      // 放进 isNormalWindowMode 分支并且先用 hideTitleBar 改写参数，
+      // 会让普通窗口的三个值全部变为假，三键不再出现。
+      window.setWindowTitleButtonVisible(this.maximizable, this.minimizable, this.closable);
       window.setResizeByDragEnabled(this.resizable);
       window.setWindowFocusable(this.focusable).then(() => {
         LogUtil.info(TAG, `Succeeded in setting initial window focusable: ${this.focusable}.`);
@@ -308,7 +314,6 @@ export class WebAbility extends WebBaseAbility {
         LogUtil.error(TAG, `Failed to set initial window focusable. Cause: ${JSON.stringify(err)}`);
       });
       if (this.deviceInfoAdapter?.isNormalWindowMode() === false) {
-        window.setWindowTitleButtonVisible(this.maximizable, this.minimizable, this.closable);
         window.setWindowTitleMoveEnabled(!this.hideTitleBar);
         windowStage.setWindowModal(this.isModal);
         if (this.isPanel)
@@ -607,21 +612,6 @@ export class WebAbility extends WebBaseAbility {
       LogUtil.warn(TAG, 'Can not get current color mode from window: ' + this.xcomponentId);
     }
     return this.useDarkMode || currentColorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
-  }
-
-  private setDarkModeButton(window: window.Window) {
-    let isPadDarkButtonSupported = deviceInfo.deviceType === 'tablet' && deviceInfo.sdkApiVersion >= 18;
-    if (deviceInfo.deviceType !== '2in1' && !isPadDarkButtonSupported) {
-      return;
-    }
-    try {
-      let buttonStyle: window.DecorButtonStyle = {
-        colorMode: ConfigurationConstant.ColorMode.COLOR_MODE_DARK
-      };
-      window.setDecorButtonStyle(buttonStyle);
-    } catch (exception) {
-      LogUtil.error(TAG, 'Failed to set the style of button: ' + JSON.stringify(exception));
-    }
   }
 
   private notifyWindowStatusChange(status: window.WindowStatusType) {

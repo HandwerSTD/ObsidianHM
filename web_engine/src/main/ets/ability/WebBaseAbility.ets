@@ -44,9 +44,12 @@ export class WebBaseAbility extends UIAbility implements WebProxy {
 
   // Electron
   protected cmdArgs: Array<string> = [];
-  protected minimizable: boolean = !this.hideTitleBar;
-  protected maximizable: boolean = !this.hideTitleBar;
-  protected closable: boolean = !this.hideTitleBar;
+  // 三键可见性默认全开。主窗口的 want 不带这三个参数，起始窗口与帮助窗口
+  // 同样不带，靠默认值区分：主窗口跟随系统颜色模式，另两类窗口在
+  // WebAbility 里按页面写死深色主题配三键颜色。
+  protected minimizable: boolean = true;
+  protected maximizable: boolean = true;
+  protected closable: boolean = true;
   protected alwaysOntop: boolean = false;
   protected resizable: boolean = true;
   protected focusable: boolean = true;

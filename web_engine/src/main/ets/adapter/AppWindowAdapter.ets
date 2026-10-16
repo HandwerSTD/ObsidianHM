@@ -69,6 +69,30 @@ export class AppWindowAdapter extends BaseAdapter {
     return this.abilityManager.getProxy(id)?.getWindow();
   }
 
+  // 三键可见性以 WindowPreferences 里存的取值为准。
+  // 官方模板在 setUseNativeFrame 里把可见性写死为 useNativeFrame 本身，
+  // 无边框窗口（useNativeFrame=false）会被一并隐藏三键，因此恢复用存储值。
+  private applyWindowTitleButtonVisible(id: number) {
+    let proxy = this.abilityManager.getProxy(id);
+    let preferences: WindowPreferences | undefined = proxy?.getWindowPreferences();
+    if (!preferences) {
+      return;
+    }
+    proxy?.getWindow()?.setWindowTitleButtonVisible(preferences.maximizable, preferences.minimizable, preferences.closable);
+  }
+
+  private showWindowTitleButtons(id: number) {
+    let proxy = this.abilityManager.getProxy(id);
+    let preferences: WindowPreferences | undefined = proxy?.getWindowPreferences();
+    if (preferences) {
+      preferences.maximizable = true;
+      preferences.minimizable = true;
+      preferences.closable = true;
+      proxy?.setWindowPreferences(preferences);
+    }
+    proxy?.getWindow()?.setWindowTitleButtonVisible(true, true, true);
+  }
+
   private applyShadow(windowClass: window.Window, id: number, hasShadow: boolean, refresh: boolean) {
     if (deviceInfo.sdkApiVersion < 20) {
       let line = 'shadow id=' + id + ' skipped, setWindowShadowEnabled needs API 20, have ' +
@@ -520,14 +544,20 @@ export class AppWindowAdapter extends BaseAdapter {
 
   @LogMethod
   setUseNativeFrame(id: number, useNativeFrame: boolean) {
-    let windowClass = this.getWindow(id);
+    let proxy = this.abilityManager.getProxy(id);
+    let windowClass = proxy?.getWindow();
     try {
       windowClass?.setWindowDecorVisible(useNativeFrame);
-      windowClass?.setWindowTitleButtonVisible(useNativeFrame, useNativeFrame, useNativeFrame);
-      if (!this.deviceInfoAdapter.isNormalWindowMode()) {
-        windowClass?.setWindowTitleMoveEnabled(useNativeFrame);
+      windowClass?.setWindowTitleMoveEnabled(useNativeFrame);
+      let preferences: WindowPreferences | undefined = proxy?.getWindowPreferences();
+      if (preferences) {
+        preferences.hideTitleBar = !useNativeFrame;
+        proxy?.setWindowPreferences(preferences);
+      }
+      if (useNativeFrame) {
+        this.showWindowTitleButtons(id);
       } else {
-        LogUtil.info(TAG, 'tablet free multi-window model is disabled');
+        this.applyWindowTitleButtonVisible(id);
       }
     } catch (exception) {
       LogUtil.error(TAG, `Failed to set the visibility of window decor. Cause code: ${exception.code}, message: ${exception.message}`);
