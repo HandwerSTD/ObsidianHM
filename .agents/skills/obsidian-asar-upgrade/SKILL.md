@@ -90,6 +90,7 @@ asar 换代后压缩变量会重排，但外层与注入脚本都不引用 asar 
 
 | 注入点 | 依赖的官方接口 |
 |--------|----------------|
+| `preload.js` 的 PATH 追加 | 本进程 `process.env` 可直接写 |
 | `preload.js` 的 i18next 包装 | 全局 `i18next`、`i18next.t` 的调用形态、键的 kebab-case 拼法（`setting.about.label-version`） |
 | `dom-ready.js` 的设置页注册 | `window.app.setting.settingTabs`、`addSettingTab`、设置页基类（从原型链回溯） |
 | `dom-ready.js` 的两页包装 | `getSettingDefinitions`、`update()`、设置项的 `render(setting)` 回调 |

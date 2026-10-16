@@ -801,6 +801,8 @@ HarmonyOS 限制 `/usr/bin` 不会挂载进应用，`/bin` 与 `/usr/bin` 这两
 
 `main.js` 在加载 asar 之前把该目录追加到 `process.env.PATH` 的末尾，去重后不做存在性检查。追加写在进程环境上，主进程之后 `require('child_process')` 派生的进程继承同一份 `PATH`。
 
+渲染进程由 nativespawn 拉起，环境块与主进程相互独立，这份追加到达不了渲染进程。`inject/preload.js` 在本进程内做同一追加（同样的去重与不检查存在性），改的是渲染进程自己的 `process.env`，DevTools 控制台读到的取值随之包含该目录。子进程继承的是拉起它的进程的环境，渲染进程经 `child_process` 派生的进程同样继承追加后的取值。
+
 升级时无需改动。
 
 ## 9. 最终的补丁范围

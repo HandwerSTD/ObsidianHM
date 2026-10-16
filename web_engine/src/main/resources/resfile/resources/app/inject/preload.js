@@ -33,6 +33,24 @@
 
   window.__ohsidianLog('preload 开始施加');
 
+  // 渲染进程的 PATH。渲染进程由 nativespawn 拉起，环境块与主进程相互独立，
+  // 外层 main.js 的追加到达不了这里，需要在本进程内补一次。
+  // 该目录在设备上是否存在由使用环境决定，因此这里只做追加，不检查存在性。
+  var HARMONYBREW_BIN = '/storage/Users/currentUser/.harmonybrew/bin';
+  try {
+    if (typeof process !== 'undefined' && process.env) {
+      var currentPath = process.env.PATH || '';
+      if (currentPath.split(':').indexOf(HARMONYBREW_BIN) < 0) {
+        process.env.PATH = currentPath ? currentPath + ':' + HARMONYBREW_BIN : HARMONYBREW_BIN;
+        window.__ohsidianLog('渲染进程 PATH 已追加：' + process.env.PATH);
+      }
+    } else {
+      window.__ohsidianLog('渲染进程无 process.env，PATH 未追加');
+    }
+  } catch (e) {
+    window.__ohsidianLog('渲染进程 PATH 追加失败 ' + (e && e.message ? e.message : String(e)));
+  }
+
   // 1. 包装 i18next.t。
   //
   // 键的形态：官方先把驼峰属性名转成 kebab-case 并补一个点，
