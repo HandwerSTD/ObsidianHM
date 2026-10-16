@@ -434,6 +434,7 @@ ObsidianHM/
 | `docs/asar-upgrade.md` | 内核升级流程与两版差异记录 |
 | `docs/runtime-inject-verification.md` | 设备实测记录 |
 | `docs/runtime-inject-plan.md` | 运行时注入方案的历史记录 |
+| `docs/licensing-audit.md` | 开源许可审计：代码与二进制的来源、许可状态、待处理问题 |
 | `.agents/skills/obsidian-asar-upgrade/SKILL.md` | 升级内核的完整流程，含注入点与官方接口的对照表 |
 | `AGENTS.md` | 仓库级作业约定 |
 

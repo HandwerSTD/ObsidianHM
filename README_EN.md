@@ -434,6 +434,7 @@ ObsidianHM/
 | `docs/asar-upgrade.md` | Engine upgrade procedure and the recorded differences between versions |
 | `docs/runtime-inject-verification.md` | On-device verification records |
 | `docs/runtime-inject-plan.md` | Historical record of the runtime injection plan |
+| `docs/licensing-audit.md` | Licensing audit: provenance and license status of the code and binaries, plus the open issues |
 | `.agents/skills/obsidian-asar-upgrade/SKILL.md` | The full engine upgrade procedure, including the injection-point reference table |
 | `AGENTS.md` | Repository-level working conventions |
 
