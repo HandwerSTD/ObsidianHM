@@ -9,7 +9,11 @@
 </p>
 
 <p align="center">
-  在 HarmonyOS 设备上运行你熟悉的 Obsidian 笔记体验 —— 支持多窗口、华为账号一键登录以及完整的系统级原生适配。
+  中文 | <a href="README_EN.md">English</a>
+</p>
+
+<p align="center">
+  在 HarmonyOS 设备上运行你熟悉的 Obsidian 笔记体验 —— 支持多窗口与完整的系统级原生适配。
 </p>
 
 <p align="center">
@@ -46,7 +50,7 @@
 | 项目信息 | |
 |---------|------|
 | 应用 ID | `com.mikannqaq.obsidian` |
-| 版本号 | 1.14.4.1（versionCode: 11404001） |
+| 版本号 | 1.14.4.2（versionCode: 11404002） |
 | 目标 SDK | HarmonyOS 6.0.2(22) / API 22 |
 | 目标设备 | 2in1（折叠屏/平板）、平板 |
 | 开发语言 | ArkTS (TypeScript) |
@@ -61,12 +65,12 @@
 flowchart TB
   A["Obsidian 1.14.4<br/>obsidian.asar（官方发布版原样）"]
   B["外层引导脚本<br/>app/main.js"]
-  C["渲染进程注入<br/>app/inject/preload.js、dom-ready.js"]
+  C["渲染进程注入<br/>app/inject/preload.js、dom-ready.js、hcs-channels.js"]
   D["Electron API 兼容层<br/>@electron/remote + Node.js 运行时"]
   E["JSBind 桥接层"]
   F["C++ 原生库<br/>libadapter.so"]
-  G["ArkTS 适配层<br/>48 个适配器"]
-  H["HarmonyOS 原生运行时<br/>Ability、ArkUI、Account Kit"]
+  G["ArkTS 适配层<br/>47 个适配器"]
+  H["HarmonyOS 原生运行时<br/>Ability、ArkUI"]
   A --> B
   B --> C
   B --> D
@@ -81,11 +85,11 @@ flowchart TB
 
 - **Obsidian 层** —— `obsidian.asar`，官方发布版逐字节原样。文件数量、体积与 md5 可用仓库内的校验脚本核验，见「定制方式」
 - **外层引导脚本** —— `app/main.js`。加载 asar，承载版本下限短路、remote 提前开启、托盘、关窗最小化到托盘、字体兼容、回收站兼容、deeplink 队列与渲染进程注入
-- **渲染进程注入** —— `app/inject/` 下的 `preload.js` 与 `dom-ready.js`，在页面脚本之前或页面就绪之后施加界面调整
+- **渲染进程注入** —— `app/inject/` 下的三个脚本，在页面脚本之前或页面就绪之后施加界面调整，并承载华为云同步通道
 - **Electron 兼容层** —— `@electron/remote` 提供 remote 模块 API，`libadapter.so` 提供 Node.js 与系统级 API
 - **JSBind 桥接层** —— 连接 JS 运行时与 ArkTS 原生层，把 Electron API 调用转发到对应适配器
-- **ArkTS 适配层** —— 48 个适配器，把 HarmonyOS API 包装为 Electron 兼容接口
-- **HarmonyOS 底层** —— 系统原生能力：Ability 组件、ArkUI 界面、华为账号等
+- **ArkTS 适配层** —— 47 个适配器，把 HarmonyOS API 包装为 Electron 兼容接口
+- **HarmonyOS 底层** —— 系统原生能力：Ability 组件、ArkUI 界面等
 
 ---
 
@@ -106,11 +110,6 @@ flowchart TB
 - 独立渲染进程隔离（通过 `ChildProcess`）
 - 状态栏扩展窗口
 
-### 华为生态集成
-
-- **华为账号一键登录** —— 通过 Account Kit 的 `LoginWithHuaweiIDButton` 实现无感认证
-- **状态栏扩展** —— 通过 `StatusBarViewExtensionAbility` 常驻系统状态栏
-
 ### 系统级原生适配
 
 | 类别 | 适配内容 |
@@ -119,9 +118,9 @@ flowchart TB
 | 输入 | IME 输入法框架、拖拽放置、多点触控 |
 | 显示 | 多显示器管理、深色/浅色主题跟随、自定义光标 |
 | 通知 | 系统通知推送、锁屏事件监听 |
-| 设备 | 电池状态、蓝牙（经典 + BLE）、电源管理、屏幕截图 |
+| 设备 | 蓝牙（经典 + BLE）、屏幕截图、电源管理、唤醒锁 |
 | 安全 | 证书管理、生物识别认证、剪贴板访问 |
-| 其他 | 打印服务、文字转语音、OCR 识别、地理定位、外部协议处理 |
+| 其他 | 打印服务、文字转语音、形状检测、系统分享、外部协议处理 |
 
 ### 自动更新
 
@@ -146,8 +145,11 @@ export { WebWindow } from './src/main/ets/components/WebWindow';
 export { WebSubWindow } from './src/main/ets/components/WebSubWindow';
 export { WebEmbeddedWindow } from './src/main/ets/components/WebEmbeddedWindow';
 export { WebWindowNode } from './src/main/ets/components/WebWindowNode';
-export { ILoginInfo } from './src/main/ets/interface/CommonInterface';
-export { ILogin } from './src/main/ets/interface/CommonInterface';
+export { WebNodeHandleWindow } from './src/main/ets/components/WebNodeHandleWindow';
+export { WebNodeHandleSubWindow } from './src/main/ets/components/WebNodeHandleSubWindow';
+export { VerifyLog } from './src/main/ets/utils/VerifyLog';
+export { DeeplinkPusher } from './src/main/ets/adapter/DeeplinkPusher';
+export { default as Inject } from './src/main/ets/common/InjectModule';
 ```
 
 另有 `childProcess.ets` 单独导出 `WebChildProcess`。
@@ -162,7 +164,7 @@ export { ILogin } from './src/main/ets/interface/CommonInterface';
 
 | Ability | 类型 | 用途 |
 |---------|------|------|
-| `EntryAbility` | UIAbility | 主入口，初始化 AGC |
+| `EntryAbility` | UIAbility | 主入口，处理 deeplink |
 | `BrowserAbility` | UIAbility | 浏览器进程窗口 |
 | `StatelessAbility` | UIAbility | 无状态窗口 |
 | `StatusBarEntryAbility` | ExtensionAbility（`statusBarView`） | 状态栏扩展 |
@@ -176,10 +178,8 @@ export { ILogin } from './src/main/ets/interface/CommonInterface';
 | `WindowNode.ets` | 浏览器窗口节点，由 `BrowserAbility` 加载 |
 | `SubWindow.ets` | 子窗口（弹窗、设置等） |
 | `EmbeddedWindow.ets` | 嵌入式窗口，由 `WebEmbeddedAbility` 加载 |
-| `Login.ets` | 华为账号登录页 |
-| `QuickLoginButtonComponent.ets` | 登录页使用的华为账号一键登录按钮 |
 | `StatusBarPage.ets` | 状态栏页面 |
-| `WebPage.ets` | 隐私协议等 WebView 页面 |
+| `WebPage.ets` | 协议展示等 WebView 页面 |
 
 ---
 
@@ -196,7 +196,7 @@ web_engine/src/main/ets/adapter/
 ├── AccessibilityAdapter.ets         # 无障碍功能
 ├── AppLifecycleAdapter.ets          # 应用生命周期
 ├── AppWindowAdapter.ets             # 应用窗口操作
-├── BatteryAdapter.ets               # 电池状态
+├── AutoUpdaterAdapter.ets           # 检测更新
 ├── BluetoothAdapter.ets             # 蓝牙经典
 ├── BluetoothLowEnergyAdapter.ets    # 低功耗蓝牙
 ├── BrowserPolicyAdapter.ets         # 浏览器安全策略
@@ -204,6 +204,7 @@ web_engine/src/main/ets/adapter/
 ├── ContextAdapter.ets               # 应用上下文
 ├── ContextPathAdapter.ets           # 文件路径解析
 ├── CursorAdapter.ets                # 自定义光标
+├── DeeplinkPusher.ets               # deeplink 转发
 ├── DefaultApplicationAdapter.ets    # 默认应用查询
 ├── DeviceAdapter.ets                # 设备信息
 ├── DeviceInfoAdapter.ets            # 硬件信息
@@ -212,35 +213,33 @@ web_engine/src/main/ets/adapter/
 ├── DisplayAdapter.ets               # 显示器管理
 ├── DragDropAdapter.ets              # 拖拽放置
 ├── ElectronAppAdapter.ets           # Electron App API
+├── EtsBridgeAdapter.ets             # ArkTS 双向通道
 ├── ExternalProtocolAdapter.ets      # 外部协议处理
 ├── FileManagerAdapter.ets           # 文件管理
 ├── FilePickerAdapter.ets            # 文件选择器
 ├── FontAdapter.ets                  # 系统字体枚举
-├── GeolocationAdapter.ets           # 地理位置
 ├── I18nAdapter.ets                  # 国际化
 ├── IMFAdapter.ets                   # 输入法框架
 ├── MediaAdapter.ets                 # 媒体播放
 ├── MimeTypeAdapter.ets              # MIME 类型
 ├── MultiInputAdapter.ets            # 多窗口输入
 ├── NativeThemeAdapter.ets           # 系统主题
-├── NetConnectionAdapter.ets         # 网络连接
 ├── NotificationAdapter.ets          # 系统通知
-├── OcrAdapter.ets                   # OCR 识别
 ├── PasteBoardApadter.ets            # 剪贴板
 ├── PermissionManagerAdapter.ets     # 权限管理
 ├── PopupWindowAdapter.ets           # 弹出窗口
-├── PowerMonitorAdapter.ets          # 电源监听
 ├── PrintAdapter.ets                 # 打印服务
 ├── ProcessAdapter.ets               # 进程管理
 ├── RunningLockAdapter.ets           # 唤醒锁
-├── ScreenlockMonitorAdapter.ets     # 锁屏监听
 ├── ScreenshotAdapter.ets            # 屏幕截图
 ├── ShapeDetectionAdapter.ets        # 形状检测
+├── ShareAdapter.ets                 # 系统分享
 ├── SpeechAdapter.ets                # 文字转语音
 ├── StatusBarManager.ets             # 状态栏控制
 ├── SubWindowAdapter.ets             # 子窗口管理
 ├── SystemFloatingWindowAdapter.ets  # 系统悬浮窗
-└── TrashAdapter.ets                # 回收站操作
+├── UpdateChecker.ets                # 更新检测通道
+└── WebAppAdapter.ets                # Web 应用元信息
 ```
 
 ### JSBind 绑定机制
@@ -255,7 +254,7 @@ JsBindingUtils.bindFunction('PasteBoardAdapter.ReadImageBuff', readImageBuff);
 // ...
 ```
 
-全部绑定在应用启动时通过 `jsbindings/JsBindingMethod.ets` 统一激活，当前合计 240 个绑定，分布在 48 个 Bind 类中。
+全部绑定在应用启动时通过 `jsbindings/JsBindingMethod.ets` 统一激活，当前合计 292 个绑定，分布在 44 个 Bind 类中。
 
 ---
 
@@ -267,7 +266,8 @@ JsBindingUtils.bindFunction('PasteBoardAdapter.ReadImageBuff', readImageBuff);
 |------|------------|
 | `app/main.js` | 主进程侧的全部改动。版本下限短路、remote 提前开启、托盘、关窗最小化到托盘、字体兼容、回收站兼容、deeplink 队列、日志通道、`PATH` 追加 |
 | `app/inject/preload.js` | 渲染进程最早时机的注入。i18n 取词包装、日志转写 |
-| `app/inject/dom-ready.js` | 页面就绪后的注入。窗口按钮与右边距、标题栏文字、设置页调整 |
+| `app/inject/dom-ready.js` | 页面就绪后的注入。华为云同步设置页、退出软件开关、关于页更新条目、起始窗口标题栏文字、窗口按钮与右边距 |
+| `app/inject/hcs-channels.js` | 华为云同步的 12 个 `hcs-*` 通道的处理函数，由 `main.js` 加载注册 |
 
 改动注入代码时有三条约束，违反会导致构建通过但运行时报错：
 
@@ -317,12 +317,6 @@ devecocli run --skip-build --device <设备序列号>
 cp build-profile.example.json5 build-profile.json5
 ```
 
-### 华为 AGC 配置
-
-1. 在 [AppGallery Connect](https://developer.huawei.com/consumer/cn/service/josp/agc/) 创建应用
-2. 下载 `agconnect-services.json`，放到 `electron/src/main/resources/rawfile/`，并填入实际的 `client_id`、`app_id`、`api_key` 等字段（仓库内提供 `agconnect-services.example.json` 作为字段模板）
-3. 在 `electron/src/main/module.json5` 的 `metadata` 中把 `client_id` 改为该应用的值
-
 ### 调试
 
 注入脚本的诊断输出写在应用数据目录的 `obsidian.log`。设备上的 `console.log` 既不进日志文件，也不出现在 hilog 里，因此注入代码统一经 `ohsidian-log` 通道交给主进程写盘。
@@ -354,12 +348,12 @@ ObsidianHM/
 │   └── src/main/
 │       ├── ets/
 │       │   ├── ability/              # WebAbility、WebEmbeddedAbility 等基类
-│       │   ├── adapter/              # 48 个系统适配器
+│       │   ├── adapter/              # 47 个系统适配器
 │       │   ├── application/          # WebAbilityStage
 │       │   ├── common/               # DI 容器、BaseAdapter、管理器
 │       │   ├── components/           # WebWindow、WebSubWindow 等 UI 组件
 │       │   ├── interface/            # TypeScript 接口定义
-│       │   ├── jsbindings/           # JSBind 绑定注册（48 个 Bind 类）
+│       │   ├── jsbindings/           # JSBind 绑定注册（44 个 Bind 类）
 │       │   ├── process/              # WebChildProcess
 │       │   └── utils/                # 日志、工具函数
 │       ├── cpp/types/libadapter/     # libadapter.so 的类型声明
@@ -373,7 +367,7 @@ ObsidianHM/
 │           └── tray.png              # 托盘图标
 │
 ├── electron/                         # HAP 入口模块
-│   ├── oh-package.json5              # 依赖：web_engine、AGC hmcore
+│   ├── oh-package.json5              # 依赖：web_engine
 │   ├── hvigorfile.ts                 # hapTasks 构建
 │   ├── libs/arm64-v8a/               # libadapter.so
 │   └── src/
@@ -389,7 +383,7 @@ ObsidianHM/
 │       │   └── resources/
 │       │       ├── base/element/     # 字符串资源
 │       │       ├── base/profile/     # main_pages 路由配置
-│       │       ├── rawfile/          # agconnect-services.json
+│       │       ├── rawfile/          # 随包原始资源
 │       │       └── zh_CN|en_US/element/
 │       └── ohosTest/                 # DevEco 脚手架自带的测试模板
 │
@@ -412,7 +406,6 @@ ObsidianHM/
 |------|------|------|
 | `inversify` | ^6.0.1 | IoC 容器，管理适配器依赖注入 |
 | `reflect-metadata` | ^0.1.13 | TypeScript 装饰器元数据 |
-| `@hw-agconnect/hmcore` | ^1.0.1 | 华为 AGC 核心服务 |
 | `libadapter.so` | — | C++ 原生适配库（本地引用，预编译） |
 | `btime` / `get-fonts` | — | 随包发布的 Node 依赖，位于 `app/node_modules/`，含预编译的 `binding.node` |
 | `@electron/remote` | 2.1.3 | Electron remote 模块兼容，位于 `app/node_modules/` |
@@ -433,6 +426,7 @@ ObsidianHM/
 | `docs/asar-customization-runtime.md` | 每一项定制的归属判定与依据 |
 | `docs/asar-upgrade.md` | 内核升级流程与两版差异记录 |
 | `docs/runtime-inject-verification.md` | 设备实测记录 |
+| `docs/runtime-upgrade-34.md` | 运行时全量更新到 v34.8.5 的过程：版本基线、替换范围、定制的搬运、同步方式、踩过的坑 |
 | `docs/runtime-inject-plan.md` | 运行时注入方案的历史记录 |
 | `docs/licensing-audit.md` | 开源许可审计：代码与二进制的来源、许可状态、待处理问题 |
 | `.agents/skills/obsidian-asar-upgrade/SKILL.md` | 升级内核的完整流程，含注入点与官方接口的对照表 |
@@ -442,19 +436,28 @@ ObsidianHM/
 
 ## 许可协议
 
-本项目源码基于 **BSD 3-Clause License**，各源文件头部保留了完整的许可证声明。
+### 本仓库源码
+
+本仓库源码基于 **BSD 3-Clause License**，正文见根目录 `LICENSE`。
+
+ArkTS 侧主要来自 Huawei Device Co., Ltd. 贡献的 HarmonyOS Electron 模板，共 149 个文件，文件头部声明为三行式 BSD-style 引用，指向本 `LICENSE`：
 
 ```
-Copyright (c) 2023-2025, Haitai FangYuan Co., Ltd.
-All rights reserved.
+// Copyright (c) 2024 Huawei Device Co., Ltd. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
 ```
+
+注入脚本、符号定位工具等本项目新增的 11 个文件带 `Copyright (c) 2026 HandwerSTD` 声明。来源沿革、逐字节比对结果与待处理问题见 `docs/licensing-audit.md`。
 
 ### 第三方许可
 
-- **Obsidian** 是其各自所有者的商标，本项目为官方发布版 `obsidian.asar` 提供 HarmonyOS 兼容运行环境
-- **Electron** 及 `@electron/remote` 遵循 MIT License
-- **InversifyJS** 遵循 MIT License
-- **Huawei SDK** 各组件遵循华为开发者协议
+- **Obsidian** —— `obsidian.asar` 为官方发布版逐字节原样，官方 `package.json` 声明 `UNLICENSED`，不授予再分发权；Obsidian 与其商标归其所有者所有
+- **Electron**（运行时二进制 `libelectron.so`、`libffmpeg.so`）—— MIT License，正文随包位于 `resfile/LICENSE.electron.txt`
+- **@electron/remote** —— MIT License，正文随包位于 `app/node_modules/@electron/remote/LICENSE`
+- **InversifyJS / reflect-metadata** —— MIT License
+- **Chromium 运行时**（`resfile/` 下的 pak、blob 与 locales）—— BSD 系列许可，第三方许可汇总随包位于 `resfile/LICENSES.chromium.html`
+- **btime / get-fonts** —— Obsidian 专有的原生 addon，官方 `package.json` 声明 `UNLICENSED`
 
 ---
 

@@ -157,6 +157,8 @@ Copyright (c) 2023-2025, Haitai FangYuan Co., Ltd.
 
 基线 A 的 BSD-3 全文可以作参考，它出自 Haitai Fangyuan 模板，与 Huawei 的条款不必然相同。
 
+**已处理**：仓库根目录已补 `LICENSE`，正文为 BSD 3-Clause 全文，版权人行含 `HandwerSTD`、前维护者 `Hanversion` 与 `Huawei Device Co., Ltd.`，三者共用同一份正文。Huawei 模板文件的头部引用式声明现在指向这份文件。Huawei 原始条款与 BSD-3 的差异是否成立，仍未向 Huawei 确认。
+
 ### 问题 3：main.js 无版权头，内容大部分逐字取自 Obsidian
 
 `web_engine/src/main/resources/resfile/resources/app/main.js` 共 1386 行，1267 行非空。Obsidian 官方 `resources/app.asar` 内的 `main.js` 共 469 行，413 行非空。两者逐行比对，412 行完全相同。
@@ -217,6 +219,8 @@ LICENSES.chromium.html     Chromium 第三方许可汇总
 本仓库的 `resfile/` 下带着一整套 Chromium 运行时（见第 4 节），两个许可文件都没有随包。仓库里唯一的 LICENSE 是 `node_modules/@electron/remote/LICENSE`，MIT 正文完整。
 
 MIT 要求「The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software」。`libelectron.so` 与 `libffmpeg.so` 属于 substantial portion。
+
+**已处理**：两个文件已补入 `web_engine/src/main/resources/resfile/`，逐字节取自 Obsidian 1.13.4 官方发布件（`tar13/obsidian-1.13.4-arm64/`）。`LICENSE.electron.txt` 与基线 B（1.12.7）那份逐字节相同；`LICENSES.chromium.html` 因 Chromium 版本差异与 1.12.7 的不同（550 个条目，1.13.4 为 773 个），取与当前运行时同代的 1.13.4 版本。
 
 ### 问题 7：19 个 DevEco Studio 脚手架文件无声明
 
@@ -279,10 +283,10 @@ web_engine/src/test/LocalUnit.test.ets
 
 按需要外部信息与改动量的次序排列。
 
-1. 补 `LICENSE` 文件，正文取 Huawei 的 BSD 条款。这一项需要先向 Huawei 确认条款版本与原文，SDK 包内没有
-2. 改正 `README.md` 与 `README_EN.md` 第 442 至 456 行，版权人改 Huawei，许可类型与实际条款一致
+1. ~~补 `LICENSE` 文件，正文取 Huawei 的 BSD 条款。这一项需要先向 Huawei 确认条款版本与原文，SDK 包内没有~~ 已补 BSD 3-Clause 全文，版权人含 Hanversion、HandwerSTD 与 Huawei，见问题 2
+2. ~~改正 `README.md` 与 `README_EN.md` 的许可协议一节，版权人改 Huawei，许可类型与实际条款一致~~ 两份均已改正
 3. 给 `main.js` 加归属标注，写明 412 行来自 Obsidian 官方 `app.asar`
-4. 补 `resfile/LICENSE.electron.txt` 与 `resfile/LICENSES.chromium.html`，取自基线 B
+4. ~~补 `resfile/LICENSE.electron.txt` 与 `resfile/LICENSES.chromium.html`，取自基线 B~~ 已完成，见问题 6
 5. 统一五处 `license` 字段
 6. 决定 `obsidian.asar` 的分发方式（问题 4），这一步先于其余各项
 7. 给 19 个 DevEco 脚手架文件与 `BuildProfile.ets` 补声明

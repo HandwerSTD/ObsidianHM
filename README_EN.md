@@ -9,7 +9,11 @@
 </p>
 
 <p align="center">
-  Run the Obsidian note-taking experience you know and love on HarmonyOS devices — with multi-window support, one-tap Huawei Account sign-in, and comprehensive native system integration.
+  <a href="README.md">中文</a> | English
+</p>
+
+<p align="center">
+  Run the Obsidian note-taking experience you know and love on HarmonyOS devices — with multi-window support and comprehensive native system integration.
 </p>
 
 <p align="center">
@@ -46,7 +50,7 @@ At its core, ObsidianHM provides the Electron API using HarmonyOS native capabil
 | Project Info | |
 |-------------|------|
 | App ID | `com.mikannqaq.obsidian` |
-| Version | 1.14.4.1 (versionCode: 11404001) |
+| Version | 1.14.4.2 (versionCode: 11404002) |
 | Target SDK | HarmonyOS 6.0.2(22) / API 22 |
 | Target Devices | 2in1 (foldable/tablet), Tablet |
 | Language | ArkTS (TypeScript) |
@@ -61,12 +65,12 @@ At its core, ObsidianHM provides the Electron API using HarmonyOS native capabil
 flowchart TB
   A["Obsidian 1.14.4<br/>obsidian.asar (byte-for-byte official)"]
   B["Outer bootstrap script<br/>app/main.js"]
-  C["Renderer injection<br/>app/inject/preload.js, dom-ready.js"]
+  C["Renderer injection<br/>app/inject/preload.js, dom-ready.js, hcs-channels.js"]
   D["Electron API compatibility<br/>@electron/remote + Node.js runtime"]
   E["JSBind bridge"]
   F["C++ native library<br/>libadapter.so"]
-  G["ArkTS adapter layer<br/>48 adapters"]
-  H["HarmonyOS native runtime<br/>Ability, ArkUI, Account Kit"]
+  G["ArkTS adapter layer<br/>47 adapters"]
+  H["HarmonyOS native runtime<br/>Ability, ArkUI"]
   A --> B
   B --> C
   B --> D
@@ -81,11 +85,11 @@ flowchart TB
 
 - **Obsidian layer** — `obsidian.asar`, byte-for-byte the official release. File count, size, and md5 can be verified with the script bundled in this repo, see "Customization"
 - **Outer bootstrap script** — `app/main.js`. Loads the asar and carries the version-floor short circuit, early remote enable, tray, close-to-tray, font compatibility, trash compatibility, the deeplink queue, and renderer injection
-- **Renderer injection** — `preload.js` and `dom-ready.js` under `app/inject/`, applied before page scripts run or once the page is ready
+- **Renderer injection** — three scripts under `app/inject/`, applied before page scripts run or once the page is ready, also carrying the Huawei Cloud Sync channels
 - **Electron compatibility layer** — `@electron/remote` provides the remote module API; `libadapter.so` provides Node.js and system-level APIs
 - **JSBind bridge** — connects the JS runtime to the ArkTS native layer, forwarding Electron API calls to the matching adapter
-- **ArkTS adapter layer** — 48 adapters wrapping HarmonyOS APIs as Electron-compatible interfaces
-- **HarmonyOS foundation** — Ability components, ArkUI, Huawei Account, and other system-native capabilities
+- **ArkTS adapter layer** — 47 adapters wrapping HarmonyOS APIs as Electron-compatible interfaces
+- **HarmonyOS foundation** — Ability components, ArkUI, and other system-native capabilities
 
 ---
 
@@ -106,11 +110,6 @@ flowchart TB
 - Isolated renderer processes (via `ChildProcess`)
 - Status bar extension window
 
-### Huawei Ecosystem Integration
-
-- **One-Tap Huawei Account Sign-In** — Seamless authentication via Account Kit's `LoginWithHuaweiIDButton`
-- **Status Bar Extension** — Persistent system status bar presence via `StatusBarViewExtensionAbility`
-
 ### Native System Integration
 
 | Category | Coverage |
@@ -119,9 +118,9 @@ flowchart TB
 | Input | IME framework, drag and drop, multi-touch |
 | Display | Multi-monitor management, dark/light theme following, custom cursors |
 | Notifications | System notifications, screen lock event monitoring |
-| Device | Battery status, Bluetooth (classic + BLE), power management, screen capture |
+| Device | Bluetooth (classic + BLE), screen capture, power management, wake lock |
 | Security | Certificate management, biometric authentication, clipboard access |
-| Other | Printing, text-to-speech, OCR, geolocation, external protocol handling |
+| Other | Printing, text-to-speech, shape detection, system sharing, external protocol handling |
 
 ### Auto-Update
 
@@ -146,8 +145,11 @@ export { WebWindow } from './src/main/ets/components/WebWindow';
 export { WebSubWindow } from './src/main/ets/components/WebSubWindow';
 export { WebEmbeddedWindow } from './src/main/ets/components/WebEmbeddedWindow';
 export { WebWindowNode } from './src/main/ets/components/WebWindowNode';
-export { ILoginInfo } from './src/main/ets/interface/CommonInterface';
-export { ILogin } from './src/main/ets/interface/CommonInterface';
+export { WebNodeHandleWindow } from './src/main/ets/components/WebNodeHandleWindow';
+export { WebNodeHandleSubWindow } from './src/main/ets/components/WebNodeHandleSubWindow';
+export { VerifyLog } from './src/main/ets/utils/VerifyLog';
+export { DeeplinkPusher } from './src/main/ets/adapter/DeeplinkPusher';
+export { default as Inject } from './src/main/ets/common/InjectModule';
 ```
 
 `childProcess.ets` separately exports `WebChildProcess`.
@@ -162,7 +164,7 @@ The executable application module containing all UI pages and application logic.
 
 | Ability | Type | Purpose |
 |---------|------|---------|
-| `EntryAbility` | UIAbility | Main entry, initializes AGC |
+| `EntryAbility` | UIAbility | Main entry, handles deeplinks |
 | `BrowserAbility` | UIAbility | Browser process window |
 | `StatelessAbility` | UIAbility | Stateless window |
 | `StatusBarEntryAbility` | ExtensionAbility (`statusBarView`) | Status bar extension |
@@ -176,10 +178,8 @@ The executable application module containing all UI pages and application logic.
 | `WindowNode.ets` | Browser window node, loaded by `BrowserAbility` |
 | `SubWindow.ets` | Child windows (popups, settings) |
 | `EmbeddedWindow.ets` | Embedded window, loaded by `WebEmbeddedAbility` |
-| `Login.ets` | Huawei Account sign-in page |
-| `QuickLoginButtonComponent.ets` | The one-tap sign-in button used by the login page |
 | `StatusBarPage.ets` | Status bar page |
-| `WebPage.ets` | WebView pages such as the privacy policy |
+| `WebPage.ets` | WebView pages for agreement display |
 
 ---
 
@@ -196,7 +196,7 @@ web_engine/src/main/ets/adapter/
 ├── AccessibilityAdapter.ets         # Accessibility
 ├── AppLifecycleAdapter.ets          # Application lifecycle
 ├── AppWindowAdapter.ets             # Application window operations
-├── BatteryAdapter.ets               # Battery status
+├── AutoUpdaterAdapter.ets           # Update checking
 ├── BluetoothAdapter.ets             # Bluetooth classic
 ├── BluetoothLowEnergyAdapter.ets    # Bluetooth low energy
 ├── BrowserPolicyAdapter.ets         # Browser security policy
@@ -204,6 +204,7 @@ web_engine/src/main/ets/adapter/
 ├── ContextAdapter.ets               # Application context
 ├── ContextPathAdapter.ets           # File path resolution
 ├── CursorAdapter.ets                # Custom cursors
+├── DeeplinkPusher.ets               # Deeplink forwarding
 ├── DefaultApplicationAdapter.ets    # Default application lookup
 ├── DeviceAdapter.ets                # Device information
 ├── DeviceInfoAdapter.ets            # Hardware information
@@ -212,35 +213,33 @@ web_engine/src/main/ets/adapter/
 ├── DisplayAdapter.ets               # Display management
 ├── DragDropAdapter.ets              # Drag and drop
 ├── ElectronAppAdapter.ets           # Electron App API
+├── EtsBridgeAdapter.ets             # ArkTS two-way bridge
 ├── ExternalProtocolAdapter.ets      # External protocol handling
 ├── FileManagerAdapter.ets           # File management
 ├── FilePickerAdapter.ets            # File picker
 ├── FontAdapter.ets                  # System font enumeration
-├── GeolocationAdapter.ets           # Geolocation
 ├── I18nAdapter.ets                  # Internationalization
 ├── IMFAdapter.ets                   # Input method framework
 ├── MediaAdapter.ets                 # Media playback
 ├── MimeTypeAdapter.ets              # MIME types
 ├── MultiInputAdapter.ets            # Multi-window input
 ├── NativeThemeAdapter.ets           # System theme
-├── NetConnectionAdapter.ets         # Network connectivity
 ├── NotificationAdapter.ets          # System notifications
-├── OcrAdapter.ets                   # OCR
 ├── PasteBoardApadter.ets            # Clipboard
 ├── PermissionManagerAdapter.ets     # Permission management
 ├── PopupWindowAdapter.ets           # Popup windows
-├── PowerMonitorAdapter.ets          # Power monitoring
 ├── PrintAdapter.ets                 # Printing
 ├── ProcessAdapter.ets               # Process management
 ├── RunningLockAdapter.ets           # Wake lock
-├── ScreenlockMonitorAdapter.ets     # Screen lock monitoring
 ├── ScreenshotAdapter.ets            # Screen capture
 ├── ShapeDetectionAdapter.ets        # Shape detection
+├── ShareAdapter.ets                 # System sharing
 ├── SpeechAdapter.ets                # Text-to-speech
 ├── StatusBarManager.ets             # Status bar control
 ├── SubWindowAdapter.ets             # Child window management
 ├── SystemFloatingWindowAdapter.ets  # System floating windows
-└── TrashAdapter.ets                # Trash operations
+├── UpdateChecker.ets                # Update check channel
+└── WebAppAdapter.ets                # Web app metadata
 ```
 
 ### JSBind Registration
@@ -255,7 +254,7 @@ JsBindingUtils.bindFunction('PasteBoardAdapter.ReadImageBuff', readImageBuff);
 // ...
 ```
 
-All bindings are activated at startup through `jsbindings/JsBindingMethod.ets`. There are currently 240 bindings across 48 Bind classes.
+All bindings are activated at startup through `jsbindings/JsBindingMethod.ets`. There are currently 292 bindings across 44 Bind classes.
 
 ---
 
@@ -265,9 +264,10 @@ All bindings are activated at startup through `jsbindings/JsBindingMethod.ets`. 
 
 | Location | What it carries |
 |----------|-----------------|
-| `app/main.js` | All main-process changes. Version-floor short circuit, early remote enable, tray, close-to-tray, font compatibility, trash compatibility, the deeplink queue, the log channel |
+| `app/main.js` | All main-process changes. Version-floor short circuit, early remote enable, tray, close-to-tray, font compatibility, trash compatibility, the deeplink queue, the log channel, `PATH` additions |
 | `app/inject/preload.js` | Earliest renderer injection. i18n lookup wrapping, log forwarding |
-| `app/inject/dom-ready.js` | Post-ready injection. Window buttons and right margin, titlebar text, settings page adjustments |
+| `app/inject/dom-ready.js` | Post-ready injection. Huawei Cloud Sync settings page, the exit-to-tray toggle, About page update entries, starter window titlebar text, window buttons and right margin |
+| `app/inject/hcs-channels.js` | Handler functions for the 12 Huawei Cloud Sync `hcs-*` channels, loaded and registered by `main.js` |
 
 Three constraints apply when changing injection code. Violating any of them builds successfully but fails at runtime:
 
@@ -317,12 +317,6 @@ Build output lands in `electron/build/default/outputs/default/`; the signed HAP 
 cp build-profile.example.json5 build-profile.json5
 ```
 
-### Huawei AGC Setup
-
-1. Create an application in [AppGallery Connect](https://developer.huawei.com/consumer/cn/service/josp/agc/)
-2. Download `agconnect-services.json` into `electron/src/main/resources/rawfile/` and fill in the actual `client_id`, `app_id`, `api_key`, and related fields (`agconnect-services.example.json` in the repo serves as a field template)
-3. Change `client_id` in the `metadata` block of `electron/src/main/module.json5` to the value for that application
-
 ### Debugging
 
 Diagnostic output from the injection scripts is written to `obsidian.log` in the application data directory. On device, `console.log` reaches neither the log file nor hilog, so injection code writes through the `ohsidian-log` channel to the main process instead.
@@ -354,12 +348,12 @@ ObsidianHM/
 │   └── src/main/
 │       ├── ets/
 │       │   ├── ability/              # WebAbility, WebEmbeddedAbility base classes
-│       │   ├── adapter/              # 48 system adapters
+│       │   ├── adapter/              # 47 system adapters
 │       │   ├── application/          # WebAbilityStage
 │       │   ├── common/               # DI container, BaseAdapter, managers
 │       │   ├── components/           # WebWindow, WebSubWindow, and other UI components
 │       │   ├── interface/            # TypeScript interface definitions
-│       │   ├── jsbindings/           # JSBind registration (48 Bind classes)
+│       │   ├── jsbindings/           # JSBind registration (44 Bind classes)
 │       │   ├── process/              # WebChildProcess
 │       │   └── utils/                # Logging and utilities
 │       ├── cpp/types/libadapter/     # Type declarations for libadapter.so
@@ -373,7 +367,7 @@ ObsidianHM/
 │           └── tray.png              # Tray icon
 │
 ├── electron/                         # HAP entry module
-│   ├── oh-package.json5              # Deps: web_engine, AGC hmcore
+│   ├── oh-package.json5              # Deps: web_engine
 │   ├── hvigorfile.ts                 # hapTasks build
 │   ├── libs/arm64-v8a/               # libadapter.so
 │   └── src/
@@ -389,7 +383,7 @@ ObsidianHM/
 │       │   └── resources/
 │       │       ├── base/element/     # String resources
 │       │       ├── base/profile/     # main_pages routing config
-│       │       ├── rawfile/          # agconnect-services.json
+│       │       ├── rawfile/          # Raw resources shipped with the package
 │       │       └── zh_CN|en_US/element/
 │       └── ohosTest/                 # Test templates from the DevEco scaffold
 │
@@ -412,7 +406,6 @@ ObsidianHM/
 |------------|---------|-------|
 | `inversify` | ^6.0.1 | IoC container managing adapter injection |
 | `reflect-metadata` | ^0.1.13 | TypeScript decorator metadata |
-| `@hw-agconnect/hmcore` | ^1.0.1 | Huawei AGC core services |
 | `libadapter.so` | — | C++ native adapter library (local reference, prebuilt) |
 | `btime` / `get-fonts` | — | Node dependencies shipped with the package under `app/node_modules/`, with prebuilt `binding.node` binaries |
 | `@electron/remote` | 2.1.3 | Electron remote compatibility, under `app/node_modules/` |
@@ -429,10 +422,11 @@ ObsidianHM/
 
 | Document | Contents |
 |----------|----------|
-| `docs/obsidian-internals.md` | Official internals: the 44 channels, global objects, i18n lookup, settings page structure, titlebar, platform differences |
+| `docs/obsidian-internals.md` | Official internals: the 46 channels, global objects, i18n lookup, settings page structure, titlebar, platform differences |
 | `docs/asar-customization-runtime.md` | Per-item customization decisions and their basis |
 | `docs/asar-upgrade.md` | Engine upgrade procedure and the recorded differences between versions |
 | `docs/runtime-inject-verification.md` | On-device verification records |
+| `docs/runtime-upgrade-34.md` | The full runtime upgrade to v34.8.5: version baseline, replacement scope, customization migration, sync approach, pitfalls |
 | `docs/runtime-inject-plan.md` | Historical record of the runtime injection plan |
 | `docs/licensing-audit.md` | Licensing audit: provenance and license status of the code and binaries, plus the open issues |
 | `.agents/skills/obsidian-asar-upgrade/SKILL.md` | The full engine upgrade procedure, including the injection-point reference table |
@@ -442,19 +436,28 @@ ObsidianHM/
 
 ## License
 
-The source code of this project is under the **BSD 3-Clause License**. Each source file retains the full license header.
+### Source Code of This Repository
+
+The source code of this project is licensed under the **BSD 3-Clause License**; see the root `LICENSE` for the full text.
+
+The ArkTS side mainly comes from the HarmonyOS Electron template contributed by Huawei Device Co., Ltd., totaling 149 files whose headers carry a three-line BSD-style reference pointing to that `LICENSE`:
 
 ```
-Copyright (c) 2023-2025, Haitai FangYuan Co., Ltd.
-All rights reserved.
+// Copyright (c) 2024 Huawei Device Co., Ltd. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
 ```
+
+The 11 files added by this project — the injection scripts, the symbol resolver tools, and others — carry `Copyright (c) 2026 HandwerSTD` headers. Provenance, byte-for-byte comparisons, and open issues are recorded in `docs/licensing-audit.md`.
 
 ### Third-Party Licenses
 
-- **Obsidian** is a trademark of its respective owner; this project provides a HarmonyOS runtime environment for the official `obsidian.asar`
-- **Electron** and `@electron/remote` are under the MIT License
-- **InversifyJS** is under the MIT License
-- **Huawei SDK** components are subject to the Huawei Developer Agreement
+- **Obsidian** — `obsidian.asar` is the byte-for-byte official release; the official `package.json` declares `UNLICENSED`, granting no redistribution rights. Obsidian and its trademarks belong to their respective owners
+- **Electron** (runtime binaries `libelectron.so`, `libffmpeg.so`) — MIT License, full text shipped at `resfile/LICENSE.electron.txt`
+- **@electron/remote** — MIT License, full text shipped at `app/node_modules/@electron/remote/LICENSE`
+- **InversifyJS / reflect-metadata** — MIT License
+- **Chromium runtime** (the pak, blob, and locale files under `resfile/`) — BSD-family licenses; the third-party license compilation is shipped at `resfile/LICENSES.chromium.html`
+- **btime / get-fonts** — Obsidian-proprietary native addons; the official `package.json` declares `UNLICENSED`
 
 ---
 
