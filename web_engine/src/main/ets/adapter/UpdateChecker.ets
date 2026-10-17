@@ -138,12 +138,21 @@ export class UpdateChecker extends BaseAdapter {
       LogUtil.info(TAG, `拉取远端 app.json5，responseCode ${response.responseCode}`);
       if (response.responseCode !== http.ResponseCode.OK) {
         LogUtil.error(TAG, `拉取远端 app.json5 失败，responseCode ${response.responseCode}`);
+        VerifyLog.error('update-check HTTP ' + response.responseCode + ' requestId=' + requestId);
+        // CheckNow 发起的 Promise 需要被 reject 而非超时，失败也要推。
+        if (requestId !== '') {
+          this.deliverError(requestId, 'update check failed: HTTP ' + response.responseCode);
+        }
         return;
       }
 
       let remote: RemoteAppJson = JSON.parse(response.result as string) as RemoteAppJson;
       if (remote.app === undefined || remote.app.versionCode === undefined) {
         LogUtil.error(TAG, '远端 app.json5 里没有 app.versionCode');
+        VerifyLog.error('update-check no versionCode in remote app.json5 requestId=' + requestId);
+        if (requestId !== '') {
+          this.deliverError(requestId, 'update check failed: remote app.json5 has no app.versionCode');
+        }
         return;
       }
       let remoteVersionCode: number = remote.app.versionCode;
@@ -164,7 +173,7 @@ export class UpdateChecker extends BaseAdapter {
       VerifyLog.error('update-check FAILED ' + JSON.stringify(err) + ' requestId=' + requestId);
       // 失败也要推，CheckNow 发起的 Promise 需要被 reject 而非超时。
       if (requestId !== '') {
-        this.deliverError(requestId);
+        this.deliverError(requestId, 'update check failed: ' + JSON.stringify(err));
       }
     } finally {
       if (request) {
@@ -191,12 +200,12 @@ export class UpdateChecker extends BaseAdapter {
     }
   }
 
-  private deliverError(requestId: string): void {
+  private deliverError(requestId: string, message: string): void {
     let handler = this.resultHandler;
     if (handler === undefined) {
       return;
     }
-    let payload = JSON.stringify({ type: 'error', requestId: requestId, message: 'update check failed' });
+    let payload = JSON.stringify({ type: 'error', requestId: requestId, message: message });
     try {
       handler(payload);
     } catch (err) {
