@@ -178,6 +178,7 @@ app.on("activate", () => { be = !1; BrowserWindow.getAllWindows().length === 0 &
 | 官方的更新条目（「可以更新」） | 运行时注入，接管 `visible`、`desc` 与按钮点击目标（详见 4.4） |
 | 「贡献作者」条目 | 运行时注入 |
 | 「商用许可证」项隐藏 | 运行时注入（新增，详见 4.6） |
+| 「命令行界面」项隐藏 | 运行时注入（新增，详见 4.6.1） |
 | 「华为云同步」侧栏入口隐藏 | 运行时注入（新增，详见 4.7） |
 | 标题栏文字 | 不处理，采用官方文字 |
 | 5 处 `window.close()` | 不处理，保留官方行为。详见 5.2 |
@@ -479,6 +480,41 @@ p.length>0&&n.push({type:"group",heading:tie.optionAdvanced(),items:p}),n}
 本仓库的「商用许可证」项有 1 处。
 
 条目不能从定义列表里删除：官方在 `render` 里把这条例目的 `Setting` 实例存进 `this.commercialLicenseSetting`，随后由 `updateAccountSettings()` 调用该引用的 `clear()`。删除定义项后 `render` 不执行，引用保持 `undefined`，`clear()` 立即抛出异常，账号分组里其余条目的渲染随之中断。置 `visible: false` 保留实例，两者互不影响。
+
+### 4.6.1 「命令行界面」项
+
+**决策：运行时注入，隐藏该项。**
+
+该项在「关于」页的高级分组内，`name` 由 i18n 键 `setting.about.option-cli` 生成，中文界面下为「命令行界面」，英文为 `Command line interface`。打开开关会弹标题为「设置 CLI 以在终端中使用」（`setting.about.option-register-path`）的 Notice，点「注册」调 `register-cli` 通道。
+
+通道的第一句是 argv 判定：
+
+```js
+u = F.basename(process.argv0),
+p = u.toLowerCase().includes("obsidian")
+if (!p) return { success: false, message: `Unable to add to command line because the executable is "${u}" instead of "obsidian".` }
+```
+
+`p` 在宿主函数内只有这一处读取。全文件搜索 `argv0` 也只有这一处，说明该消息是 argv 的原样回显，不做文件系统检查。同段的参数清洗函数 `F.basename(argv[0]).toLowerCase().includes("electron") && t.shift()` 表明这个判定的原意是识别 `electron .` 开发模式，在本机它是常态。
+
+本机的 `argv0` 恒为 `electron`：`WebAbility.ets` 在 Want 没有携带参数时主动 `argv.push('electron')`。
+
+即使让 `p` 为真也没有可注册的目标。官方 Linux 分支（`oe` 与 `W` 均为假时命中）有两条路：
+
+| 分支 | 动作 | 本机结果 |
+|------|------|----------|
+| `F.join(F.dirname(process.execPath), "obsidian-cli")` 存在 | 复制到 `~/.local/bin/obsidian`，`chmod 0755` | 该文件是 glibc 可执行文件，`NEEDED` 为 `libc.so.6` 与 `ld-linux-aarch64.so.1`，设备上没有 |
+| 否则 | `symlinkSync(process.execPath, D)` | `process.execPath` 指向 `libelectron.so`，是 musl 动态库（`NEEDED libc.so` 加 35 个 OHOS NDK 库），无解释器，不可执行 |
+
+`~/.local/bin` 也在应用沙箱内（`/data/app/el2/100/base/com.mikannqaq.obsidian/files/`），不在任何用户能敲命令的 shell 的 PATH 上。
+
+命令行的另一半同样没有对应物。CLI 的工作方式是新进程抢不到 `requestSingleInstanceLock()`，再连 `$XDG_RUNTIME_DIR/.obsidian-cli.sock`（取不到则 `~/.obsidian-cli.sock`）发 `{argv, tty, cwd}`，主进程执行后把 stdout 灌回来。本机重新拉起只有 Want，没有 stdout 也没有 TTY。asar 的 `app.on("second-instance")` 在非 Windows 上第一句即 `return`；项目侧的 `WebAbility.emitSecondInstance` 发的是 `ExecuteCommand(kSecondInstance)`，其参数在原生桥即被消化（见 8.3）。
+
+因此本机无法提供 CLI，`p` 为假的唯一后果就是那句报错，没有别的命令行行为被静默关掉。隐藏该入口即可。
+
+官方那句提示语「Please turn it on in Settings > General > Advanced」与实际位置不符，该项在 1.14.4 位于「关于」页的高级分组内。
+
+隐藏方式与 4.6 相同，在定义项上置 `visible: false`。
 
 ### 4.7 「华为云同步」侧栏入口
 

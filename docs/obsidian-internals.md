@@ -157,6 +157,36 @@ b.on("close", v => { b.closing = !0, s(), ee(o, u), setTimeout(() => { !v.defaul
 b.on("closed", () => { delete Y[o], !be && (se || Object.keys(Y).length > 0) && lt(o, !1) })
 ```
 
+### 1.8 命令行接口
+
+入口是「关于」页高级分组里的「命令行界面」项（i18n 键 `setting.about.option-cli`）。开关本身走 `ipcMain.on("cli")`，写 `C.cli` 并落到用户配置。打开开关时渲染进程弹一个 Notice，点「注册」调 `ipcMain.handle("register-cli")`。
+
+`register-cli` 的第一句是 argv 判定：
+
+```js
+u = F.basename(process.argv0),
+p = u.toLowerCase().includes("obsidian")
+if (!p) return { success: false, message: `Unable to add to command line because the executable is "${u}" instead of "obsidian".` }
+```
+
+`p` 在它的宿主函数内只有这一处读取。`process.argv0` 在全文件只出现这一次，消息里的 `${u}` 是 argv 的原样回显。同段的参数清洗函数
+
+```js
+F.basename(argv[0]).toLowerCase().includes("electron") && t.shift()
+```
+
+说明这个判定的原意是识别 `electron .` 开发模式下 argv 多出的那个元素。
+
+`p` 为真后的注册动作按平台分三支：`oe` 为真（Windows）用 powershell 改用户 PATH；`W` 为真（macOS）在 `/usr/local/bin/obsidian` 建符号链接并要管理员授权；其余（Linux）在 `~/.local/bin/obsidian` 建符号链接，或把随包发布的 `obsidian-cli` 复制过去加 `chmod 0755`。
+
+`obsidian-cli` 是随 Linux 包发布的一个独立小可执行文件，只做三件事：按 `XDG_RUNTIME_DIR`（取不到则 home）拼出 `.obsidian-cli.sock`，`connect` 后把 `{argv, tty, cwd}` 写进去，再把 stdin/stdout 接上。另一端在主进程：抢不到 `requestSingleInstanceLock()` 的那个进程负责连套接字，主进程收到后执行命令并把结果写回。
+
+Windows 走的是另一条路：`app.on("second-instance")` 里取 argv 里的 `session=` 参数，连具名管道。非 Windows 上该监听器第一句即 `return`。
+
+渲染进程侧的命令清单在 app.js，由 `registerCliHandler` 逐个注册，1.14.4 有 44 个（`search`、`daily:append`、`base:query`、`publish:site`、`sync:restore`、`workspace:save` 等）。
+
+本机（HarmonyOS）无法提供这条链路，归属判定与依据见 `docs/asar-customization-runtime.md` 的 4.6.1。
+
 ## 2. 渲染进程
 
 ### 2.1 全局对象

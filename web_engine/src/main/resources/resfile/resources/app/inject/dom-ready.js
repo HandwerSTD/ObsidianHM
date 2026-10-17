@@ -5,7 +5,8 @@
 // 承载五项：
 //   1. 「华为云同步」设置页（类定义与注册）
 //   2. 「外观」页插入「退出软件」开关
-//   3. 「关于」页追加「贡献作者」、接管官方更新条目与「检查更新」按钮
+//   3. 「关于」页追加「贡献作者」、接管官方更新条目与「检查更新」按钮，
+//      并隐藏「商用许可证」与「命令行界面」两项
 //   4. 起始窗口的标题栏文字
 //   5. 窗口按钮可见性与标题栏右边距，以及隐藏官方自绘的三个窗口按钮（[HMOS-FRAME]）
 //
@@ -602,8 +603,9 @@
   }
 
   // 「关于」页同样是混合结构：版本、更新、自动更新等平铺项在前，
-  // 账号分组在中间，高级分组（含硬件加速、命令行）在最后。
+  // 账号分组在中间，高级分组（含硬件加速、命令行界面）在最后。
   // 「贡献作者」放在平铺项的第二位。
+  // 高级分组里的「命令行界面」本机用不了，隐藏它，见下面 hideEntry 的说明。
   // 商用许可证项在账号分组内，本项目不提供该购买入口，隐藏它。
   // 官方的更新条目（「可以更新」）不隐藏，改为接管，见下面第 1 步。
   function patchAbout(items) {
@@ -657,25 +659,40 @@
       log('关于页未找到官方更新条目，跳过接管');
     }
 
-    // 隐藏商用许可证项。它在账号分组内，名称由 i18n 键
-    // setting.account.option-commercial-license 生成（中文界面下为「商用许可证」）。
-    // 名称逐字比较，不用关键词匹配，避免误伤其它条目。
+    // 隐藏两类条目，名称逐字比较，不用关键词匹配，避免误伤其它条目：
+    //
+    //   商用许可证   i18n 键 setting.account.option-commercial-license，在账号分组内
+    //   命令行界面   i18n 键 setting.about.option-cli，在高级分组内
+    //
+    // 命令行界面这一项对应官方的 CLI 注册流程，打开后弹「设置 CLI 以在终端中使用」，
+    // 点「注册」会调 register-cli 通道。官方在通道里先判 argv0：
+    //   p = F.basename(process.argv0).toLowerCase().includes("obsidian")
+    // 只有主进程由名为 obsidian 的可执行文件拉起时才为真。本机由 ArkTS 经
+    // startAbility / restartApp 拉起，argv0 恒为 electron，该项因此恒假，
+    // 点「注册」必然得到 executable is "electron" instead of "obsidian"。
+    // 本机也没有可注册的入口：官方 Linux 分支复制的是随包发布的 obsidian-cli，
+    // 那是 glibc 可执行文件（NEEDED libc.so.6 + ld-linux-aarch64.so.1），
+    // 另一分支 symlink 到 process.execPath，而本机的 process.execPath 指向
+    // libelectron.so，是 musl 动态库，不可执行。
     //
     // 做法是在定义项上置 visible:false。渲染流程 U2 → _2 里执行的是：
     //   e.settingEl.toggle(z2(e.def.visible, true))
     // 定义项没有 visible 字段时 z2 返回默认 true，把行重新显示出来，
     // 因此在 render 里调 setVisibility(false) 会被随后的这一步覆盖掉。
     //
-    // 条目不能从列表里删除：官方在 render 里把这条例目的 Setting 实例
+    // 商用许可证这一条不能从列表里删除：官方在 render 里把它的 Setting 实例
     // 存进 this.commercialLicenseSetting，紧接着调用 updateAccountSettings()，
     // 而该方法第一句就对这个引用调用 clear()。引用变成 undefined 时
     // 会立刻抛出异常，账号分组里其余条目的渲染也随之中断。
+    var HIDDEN_ENTRY_NAMES = ['商用许可证', '命令行界面', '命令列介面', 'Command line interface'];
     var hidden = 0;
+    var hiddenNames = [];
     var hideEntry = function (entry) {
       if (!entry) return;
-      if (entry.name !== '商用许可证') return;
+      if (HIDDEN_ENTRY_NAMES.indexOf(entry.name) === -1) return;
       entry.visible = false;
       hidden += 1;
+      if (hiddenNames.indexOf(entry.name) === -1) hiddenNames.push(entry.name);
     };
     for (var h = 0; h < list.length; h++) {
       var groupEntry = list[h];
@@ -684,7 +701,7 @@
       }
       hideEntry(groupEntry);
     }
-    if (hidden > 0) log('关于页已隐藏商用许可证项 ' + hidden + ' 处');
+    if (hidden > 0) log('关于页已隐藏条目 ' + hidden + ' 处：' + hiddenNames.join('|'));
 
     // 2. 「贡献作者」条目，缺位时插入到平铺项的第二位。
     var exists = false;
